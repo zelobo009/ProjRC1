@@ -33,7 +33,7 @@ int closeSerialPort();
 int readByteSerialPort(unsigned char *byte);
 int writeBytesSerialPort(const unsigned char *bytes, int nBytes);
 
-typedef enum {Start, Flag_RCV, A_RCV, C_RCV, BCC_RCV, Stop}State;
+typedef enum {Start, Flag_RCV, A_RCV, C_RCV,C_INF_RCV, BCC_RCV, BCC_INF_RCV, DATA_RCV, Stop}State;
 
 // ---------------------------------------------------
 // MAIN
