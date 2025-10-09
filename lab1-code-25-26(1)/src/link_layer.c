@@ -32,29 +32,13 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    if (argc < 2)
-    {
-        printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS0\n",
-               argv[0],
-               argv[0]);
-        exit(1);
-    }
+    
 
     // Open serial port device for reading and writing, and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
     //
     // NOTE: See the i// code blockmplementation of the serial port library in "serial_port/".
-    const char *serialPort = argv[1];
-
-    if (openSerialPort(serialPort, BAUDRATE) < 0)
-    {
-        perror("openSerialPort");
-        exit(-1);
-    }
-
-    printf("Serial port %s opened\n", serialPort);
+    
 
     // Read from serial port until the 'z' char is received.
 
@@ -106,6 +90,8 @@ int llread(unsigned char *packet)
 
                 else if(byte == SET) state = C_RCV;
 
+                else if(byte == 0xAA) state = C_INF_RCV;
+
                 else state = Start;
                 
                 break;
@@ -116,6 +102,16 @@ int llread(unsigned char *packet)
 
                 else if(byte == 0) state = BCC_RCV;
 
+                else state = Start;
+                
+                break;
+
+            case C_INF_RCV:
+                printf("c_inf\n");
+                if(byte == FLAG) state = Flag_RCV;
+                
+                else if (byte == (add1 ^ byte)) state = BCC_INF_RCV;
+                
                 else state = Start;
                 
                 break;
@@ -131,7 +127,17 @@ int llread(unsigned char *packet)
                 else state = Start;
                 break;
 
-            case Stop:
+            case BCC_INF_RCV:
+                printf("bcc_inf\n");
+                state = DATA_RCV;
+                break;
+
+            case DATA_RCV:
+                printf("data\n");
+                
+                break;
+            
+                case Stop:
                 printf("stop\n");
                 STOP = TRUE;
                 break;
