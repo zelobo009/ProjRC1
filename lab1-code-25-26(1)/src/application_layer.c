@@ -18,6 +18,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
   connectionParameters.timeout = 3;
   connectionParameters.nRetransmissions = nTries;
   int r = llopen(connectionParameters);
-
+  llclose();
   return;
 }
