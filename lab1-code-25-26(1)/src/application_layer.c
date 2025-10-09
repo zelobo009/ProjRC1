@@ -10,7 +10,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
   LinkLayer connectionParameters;
   connectionParameters.baudRate = baudRate;
   strcpy(connectionParameters.serialPort, serialPort);
-  if (strcmp("tx", role)) {
+  if (strcmp("tx", role) == 0) {
     connectionParameters.role = 0;
   } else {
     connectionParameters.role = 1;

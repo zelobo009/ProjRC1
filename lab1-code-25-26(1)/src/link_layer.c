@@ -26,7 +26,7 @@ int llopen(LinkLayer connectionParameters) {
   const char *serialPort = connectionParameters.serialPort;
   State state = Start;
 
-  if (openSerialPort( "/dev/ttyS10", connectionParameters.baudRate) < 0) {
+  if (openSerialPort( serialPort, connectionParameters.baudRate) < 0) {
     perror("openSerialPort");
     return -1;
   }
