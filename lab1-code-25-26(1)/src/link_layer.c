@@ -26,7 +26,7 @@ int llopen(LinkLayer connectionParameters) {
   const char *serialPort = connectionParameters.serialPort;
   State state = Start;
 
-  if (openSerialPort(serialPort, connectionParameters.baudRate) < 0) {
+  if (openSerialPort( "/dev/ttyS10", connectionParameters.baudRate) < 0) {
     perror("openSerialPort");
     return -1;
   }
@@ -299,7 +299,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-
+    
     return 0;
 }
 
@@ -312,7 +312,6 @@ int llclose()
     if (closeSerialPort() < 0)
     {
         perror("closeSerialPort");
-        exit(-1);
     }
     return 0;
 }
