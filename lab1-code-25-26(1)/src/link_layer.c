@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -303,13 +304,13 @@ int llwrite(const unsigned char *buf, int bufSize)
   tbuf[3] = add1 ^ CurrentPacket;
   CurrentPacket = CurrentPacket ^ 0x80;
 
-  strcat(tbuf, buf);
+  memcpy(&tbuf[4], buf, bufSize);
   unsigned char bcc2 = buf[0];
-  for(int i = 1; i < bufsize;i++){
+  for(int i = 1; i < bufSize;i++){
     bcc2 = bcc2 ^ buf[i];
   }
-  tbuf[3 + bufsize] = bcc2
-  tbuf[4 + bufsize] = FLAG;
+  tbuf[4 + bufSize] = bcc2;
+  tbuf[5 + bufSize] = FLAG;
 
 
   struct sigaction act = {0};
@@ -318,28 +319,28 @@ int llwrite(const unsigned char *buf, int bufSize)
       perror("sigaction");
       return 1;
   }
-
+    int bytes = 0;
     printf("Alarm configured\n");
 
     while (alarmCount < info.nRetransmissions && !alarmEnabled) {
 
-      int bytes = writeBytesSerialPort(buf, 5);
+      bytes = writeBytesSerialPort(tbuf, bufSize+6);
       printf("Sending word: ");
       int i = 0;
 
-      while (i < 6+bufsize) {
-        printf("0x%02X ", buf[i]);
+      while (i < 6+bufSize) {
+        printf("0x%02X ", tbuf[i]);
         i++;
       }
+      printf("\n");
 
       sleep(1);
       if (alarmEnabled == FALSE) {
-        alarm(connectionParameters.timeout);
+        alarm(info.timeout);
         alarmEnabled = TRUE;
       }
 
       STOP = FALSE;
-      int lock = 0;
       int counter = 0;
       unsigned char bufR[BUF_SIZE] = {0};
       while (STOP == FALSE) {
@@ -380,7 +381,7 @@ int llwrite(const unsigned char *buf, int bufSize)
           if (byte == FLAG)
             state = Flag_RCV;
 
-          else if (byte == UA) {
+          else if (byte == (CurrentPacket + 0x05)) {
             state = C_RCV;
             bufR[2] = FLAG;
           }
@@ -438,7 +439,7 @@ int llwrite(const unsigned char *buf, int bufSize)
       }
     }
 
-    return 0;
+    return bytes;
 
   }
 
@@ -577,7 +578,7 @@ int llread(unsigned char *packet)
     buf[4] = FLAG;
 
     sleep(1);
-    int bytes = writeBytesSerialPort(buf, 5);
+    writeBytesSerialPort(buf, 5);
     int i = 0;
     while (i < 5) {
       printf("var = 0x%02X\n", buf[i]);
