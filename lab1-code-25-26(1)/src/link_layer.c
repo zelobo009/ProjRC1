@@ -49,7 +49,7 @@ int llopen(LinkLayer connectionParameters) {
     printf("Alarm configured\n");
 
     // Create string to send
-    unsigned char buf[BUF_SIZE] = {0};
+    unsigned char buf[1024] = {0};
 
     buf[0] = FLAG;
     buf[1] = add1;
