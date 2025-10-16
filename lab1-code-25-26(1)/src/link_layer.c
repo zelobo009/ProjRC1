@@ -268,7 +268,7 @@ int llopen(LinkLayer connectionParameters) {
     buf[3] = add1 ^ UA;
     buf[4] = FLAG;
 
-    sleep(1);
+    sleep(1);    
     int bytes = writeBytesSerialPort(buf, 5);
     int i = 0;
     while (i < 5) {
@@ -457,93 +457,92 @@ int llread(unsigned char *packet)
     int index = 0;
     STOP = FALSE;
 
-    while (STOP == FALSE) {
-      // Read one byte from serial port.
-      // NOTE: You must check how many bytes were actually read by reading the
-      // return value. In this example, we assume that the byte is always read,
-      // which may not be true.
-      unsigned char byte;
-      int bytes = readByteSerialPort(&byte);
-      nBytesBuf += bytes;
 
-      switch (state) {
-      case Start:
-        printf("start\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
+    while (STOP == FALSE)
+    {
 
-        else
-          state = Start;
+        unsigned char byte;
+        int bytes = readByteSerialPort(&byte);
+        nBytesBuf += bytes;
+        
+        switch (state) {
+            case Start:
+                printf("start\n");
+                if(byte == FLAG) state = Flag_RCV;
+                
+                else state = Start;
+                
+                break;
+            
+            case Flag_RCV:
+                printf("flag\n");
+                if(byte == FLAG) state = Flag_RCV;
 
-        break;
-
-      case Flag_RCV:
-        printf("flag\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == add1)
-          state = A_RCV;
-
-        else
-          state = Start;
-
-        break;
-
-      case A_RCV:
-        printf("a\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == SET)
-          state = C_RCV;
-
-                else if(byte == 0xAA) state = C_INF_RCV;
-
-        else
-          state = Start;
-
-        break;
-
-      case C_RCV:
-        printf("c\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == 0)
-          state = BCC_RCV;
+                else if(byte == add1) state = A_RCV;
 
                 else state = Start;
                 
                 break;
 
-            case C_INF_RCV:
-                printf("c_inf\n");
+            case A_RCV:
+                printf("a\n");
                 if(byte == FLAG) state = Flag_RCV;
-                
-                else if (byte == (add1 ^ byte)) state = BCC_INF_RCV;
-                
-        else
-          state = Start;
 
-        break;
-
-      case BCC_RCV:
-
-        printf("bcc\n");
-        if (byte == FLAG) {
-          state = Stop;
-          STOP = TRUE;
-        }
-
-        else
-          state = Start;
-        break;
-
-            case BCC_INF_RCV:
-                printf("bcc_inf\n");
-                state = DATA_RCV;
+                else {
+                    ctrl = byte;
+                    state = C_RCV;
+                }
                 break;
+
+            case C_RCV:
+                printf("c\n");
+                if(byte == FLAG) state = Flag_RCV;
+
+                else if (byte == (add1 ^ ctrl)) state = BCC_RCV;
+
+                else state = Start;
+                
+                break;
+
+            
+
+            case BCC_RCV:
+
+                printf("bcc\n");
+                
+                if(ctrl == SET){
+                    
+                    if(byte == FLAG){
+                        
+                        state = Stop;
+                        STOP = TRUE;
+
+                        unsigned char buf[5] = {0}; 
+
+                        buf[0] = FLAG;
+                        buf[1] = add1;
+                        buf[2] = UA;
+                        buf[3] = add1 ^ UA;
+                        buf[4] = FLAG;
+
+                        writeBytesSerialPort(buf, 5);
+                    } 
+
+                    else state = Start;
+                }
+                else if(ctrl == 0xAA){
+                    if(byte == FLAG){
+                        state = Stop;
+                        STOP = TRUE;
+                        
+                    } 
+                    else {
+                        result[index++] = byte;
+                        state = DATA_RCV;
+                    }
+
+                }
+
 
             case DATA_RCV:
                 printf("data\n");
@@ -558,37 +557,35 @@ int llread(unsigned char *packet)
                 }
                 break;
             
-          case Stop:
-        printf("stop\n");
-        STOP = TRUE;
-        break;
-      default:
-        break;
-      }
+            case Stop:
+                printf("stop\n");
+                STOP = TRUE;
+                break;
+            
+            default:
+                break;
+        }
+
+        
+        }
+        
+        
+
+    for (int i = 0; i < index; i++) {
+        packet[i] = result[i];
     }
 
-    printf("SENDING NOW");
-    unsigned char buf[BUF_SIZE] = {0};
+    
 
-    buf[0] = FLAG;
-    buf[1] = add1;
-    buf[2] = UA;
-    buf[3] = add1 ^ UA;
-    buf[4] = FLAG;
-
-    sleep(1);
-    writeBytesSerialPort(buf, 5);
-    int i = 0;
-    while (i < 5) {
-      printf("var = 0x%02X\n", buf[i]);
-      i++;
+    printf("Received packet: ");
+    for (int i = 0; i < index; i++) {
+        printf("%02X ", packet[i]);
     }
+    printf("\n");
 
-    printf("Total bytes received: %d\n", nBytesBuf);
 
-    return 0;
-  }
-
+    return index;
+}
 
 
 ////////////////////////////////////////////////

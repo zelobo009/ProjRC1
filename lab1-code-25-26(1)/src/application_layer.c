@@ -4,6 +4,7 @@
 #include "link_layer.h"
 
 #include <string.h>
+#include <stdio.h>
 
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename) {
@@ -38,10 +39,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     llwrite(cP,5);
 
-    unsigned char rbuf[500]
+    unsigned char rbuf[500];
+
+    int rBytes = 0;
     
-    while( int rBytes = fread(rbuf,sizeof(unsigned char), 500, file)){
-      
+    while(rBytes != 0){
+      fread(rbuf,sizeof(unsigned char), 500, file);
       unsigned char dp[1000] = {0};
       dp[0] = 2;
       dp[1] = 1;
