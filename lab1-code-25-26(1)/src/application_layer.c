@@ -21,7 +21,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
   int r = llopen(connectionParameters);
     if (connectionParameters.role == 0){
 
-    FILE* file = fopen("peguin.gif", "rb");
+    FILE* file = fopen("penguin.gif", "rb");
 
     if (file == NULL) {
         perror("Error opening file");
@@ -39,13 +39,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     llwrite(cP,5);
 
-    unsigned char rbuf[500];
+    unsigned char rbuf[500] = {0};
 
     int rBytes = 0;
     
-    while(rBytes != 0){
-      fread(rbuf,sizeof(unsigned char), 500, file);
-      unsigned char dp[1000] = {0};
+    while((rBytes = fread(rbuf, sizeof(unsigned char), 250, file)) > 0){
+      unsigned char dp[500] = {0};
       dp[0] = 2;
       dp[1] = 1;
       dp[2] = 0xFD;
@@ -60,7 +59,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
   }
 
   if(connectionParameters.role == 1){
-    unsigned char* packet;
+    unsigned char* packet[600] = {0};
+    
     llread(packet);
   }
   llclose();

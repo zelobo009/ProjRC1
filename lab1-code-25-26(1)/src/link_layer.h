@@ -19,7 +19,7 @@ typedef struct
     int timeout;
 } LinkLayer;
 
-typedef enum {Start, Flag_RCV, A_RCV, C_RCV,C_INF_RCV, BCC_RCV, BCC_INF_RCV, DATA_RCV, Stop}State;
+typedef enum {Start, Flag_RCV, A_RCV, C_RCV,C_INF_RCV, BCC_RCV, BCC_INF_RCV, BCC_DATA, DATA_C, CTRL_T, DATA_S1, CTRL_S, CTRL_V,BCC2, BCC2_RCV, DATA_RCV, Stop}State;
 
 // Size of maximum acceptable payload.
 // Maximum number of bytes that application layer should send to link layer.

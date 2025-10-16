@@ -272,9 +272,10 @@ int llopen(LinkLayer connectionParameters) {
     int bytes = writeBytesSerialPort(buf, 5);
     int i = 0;
     while (i < 5) {
-      printf("var = 0x%02X\n", buf[i]);
+      printf(" 0x%02X ", buf[i]);
       i++;
     }
+    printf("\n");
 
     printf("Total bytes received: %d\n", nBytesBuf);
 
@@ -302,7 +303,6 @@ int llwrite(const unsigned char *buf, int bufSize)
   tbuf[1] = add1;
   tbuf[2] = CurrentPacket;
   tbuf[3] = add1 ^ CurrentPacket;
-  CurrentPacket = CurrentPacket ^ 0x80;
 
   memcpy(&tbuf[4], buf, bufSize);
   unsigned char bcc2 = buf[0];
@@ -381,9 +381,15 @@ int llwrite(const unsigned char *buf, int bufSize)
           if (byte == FLAG)
             state = Flag_RCV;
 
-          else if (byte == (CurrentPacket + 0x05)) {
+          else if (byte == 0xAB) {
             state = C_RCV;
-            bufR[2] = FLAG;
+            CurrentPacket = 0x80;
+            bufR[2] = byte;
+          }
+          else if (byte == 0xAA){
+            state = C_RCV;
+            CurrentPacket = 0x00;
+            bufR[2] = byte;
           }
 
           else
@@ -396,11 +402,10 @@ int llwrite(const unsigned char *buf, int bufSize)
           if (byte == FLAG)
             state = Flag_RCV;
 
-          else if (byte == (UA ^ add1)) {
-            bufR[3] = UA ^ add1;
+          else if (byte == (bufR[1] ^ bufR[2])) {
+            bufR[3] = byte;
             state = BCC_RCV;
           }
-
           else
             state = Start;
 
@@ -453,8 +458,11 @@ int llread(unsigned char *packet)
 
     State state = Start;
     unsigned char ctrl = 0;
-    unsigned char result[BUF_SIZE]; 
+    unsigned char result[1000]; 
     int index = 0;
+    int packetBytes = 0;
+    int V_count = 0;
+    unsigned char bcc2 = 0x00;
     STOP = FALSE;
 
 
@@ -488,6 +496,11 @@ int llread(unsigned char *packet)
                 printf("a\n");
                 if(byte == FLAG) state = Flag_RCV;
 
+                else if(byte == CurrentPacket){
+                    CurrentPacket = CurrentPacket ^ 0x80;
+                    state = BCC_DATA;
+                }
+
                 else {
                     ctrl = byte;
                     state = C_RCV;
@@ -504,7 +517,18 @@ int llread(unsigned char *packet)
                 
                 break;
 
-            
+            case BCC_DATA:
+                printf("bccD\n");
+                if(byte == FLAG) state = Flag_RCV;
+
+                else if(byte = add1 ^ CurrentPacket ^ 0x80){
+                  state = DATA_C;
+                }
+                else{
+                  state = Start;
+                }
+                break;
+
 
             case BCC_RCV:
 
@@ -542,18 +566,105 @@ int llread(unsigned char *packet)
                     }
 
                 }
+                break;
 
+            case DATA_C:
+                printf("dc\n");
+                if(byte == FLAG) state = Flag_RCV;
 
+                else if(byte == 1){
+                  state = CTRL_T;
+                  packet[packetBytes] = byte;
+                  packetBytes++;
+                }
+                else if(byte == 2){
+                  state = DATA_S1;
+                  packet[packetBytes] = byte;
+                  packetBytes++;
+                }
+                else if(byte == 3){
+                  state = CTRL_T;
+                  packet[packetBytes] = byte;
+                  packetBytes++;
+                }
+                else{
+                  state = Start;
+                }
+                break;
+
+            case CTRL_T:
+                printf("ctrlT\n");
+                if(byte == FLAG) state = Flag_RCV;
+
+                else if (byte == 0){
+                  state = CTRL_S;
+                  packet[packetBytes] = byte;
+                  packetBytes++;
+                }
+                else{
+                  state = Start;
+                }
+                break;
+
+            case CTRL_S:
+                printf("ctrlS\n");
+                printf("%02X ", byte);
+                if(byte == FLAG) state = Flag_RCV;
+
+                else{
+                  state = CTRL_V;
+                  packet[packetBytes] = byte;
+                  packetBytes++;
+                  V_count = byte;
+                }
+                break;
+
+            case CTRL_V:
+                printf("ctrlV\n");
+                printf("%02X ", byte);
+                if(byte == FLAG) state = Flag_RCV;
+
+                else if(V_count > 1){
+                  state = CTRL_V;
+                  packet[packetBytes] = byte;
+                  packetBytes++;
+                  V_count--;
+                }
+                 else if(V_count == 1){
+                  packet[packetBytes] = byte;
+                  packetBytes++;
+                  state = BCC2;
+                }
+                break;
+
+            case BCC2:
+                printf("bcc2\n");
+                bcc2 = byte;
+                state = BCC2_RCV;
+                break;
+
+            case BCC2_RCV:
+                printf("bcc2R\n");
+                if(byte == FLAG){ 
+                  state = STOP;
+                  STOP = TRUE;
+                }
+
+                else{
+                  state = Start;
+                }
+                break;
+      
             case DATA_RCV:
                 printf("data\n");
                 
                 if(byte == FLAG){
-                    state = Stop;
-                    STOP = TRUE;
-                        
+                    state = Stop; 
                 } 
                 else {
-                    result[index++] = byte;
+                    packet[packetBytes] = byte;
+                    packetBytes++;
+                    state = DATA_RCV;
                 }
                 break;
             
@@ -565,26 +676,48 @@ int llread(unsigned char *packet)
             default:
                 break;
         }
-
         
-        }
+      }
         
         
-
-    for (int i = 0; i < index; i++) {
-        packet[i] = result[i];
-    }
-
-    
+    unsigned char test = 0x00;
 
     printf("Received packet: ");
-    for (int i = 0; i < index; i++) {
+    for (int i = 0; i < packetBytes; i++) {
         printf("%02X ", packet[i]);
+        test = test ^ packet[i];
+    }
+    if(bcc2 == test){
+      unsigned char buf[5] = {0}; 
+                        buf[0] = FLAG;
+                        buf[1] = add1;
+                        buf[2] = 0xAA + (CurrentPacket == 0x80);
+                        buf[3] = add1 ^ buf[2];
+                        buf[4] = FLAG;
+      int i = 0;
+      printf("Sending:");
+      while (i < 5) {
+        printf(" 0x%02X ", buf[i]);
+        i++;
+      }
+      printf("\n");
+
+      writeBytesSerialPort(buf,5);
+    }
+    else {
+      unsigned char buf[5] = {0}; 
+                        buf[0] = FLAG;
+                        buf[1] = add1;
+                        buf[2] = 0x54 + (CurrentPacket == 0x00);
+                        buf[3] = add1 ^ buf[2];
+                        buf[4] = FLAG;
+
+      writeBytesSerialPort(buf,5);
     }
     printf("\n");
 
 
-    return index;
+    return packetBytes;
 }
 
 
