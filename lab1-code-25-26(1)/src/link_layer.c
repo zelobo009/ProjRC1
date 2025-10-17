@@ -296,21 +296,35 @@ int llwrite(const unsigned char *buf, int bufSize)
 {
   alarmEnabled = FALSE;
   alarmCount = 0;
+  int bytes_stuffed = 0;
   State state = Start;
 
-  unsigned char tbuf[BUF_SIZE] = {0};
+  unsigned char tbuf[500] = {0};
   tbuf[0] = FLAG;
   tbuf[1] = add1;
   tbuf[2] = CurrentPacket;
   tbuf[3] = add1 ^ CurrentPacket;
 
-  memcpy(&tbuf[4], buf, bufSize);
-  unsigned char bcc2 = buf[0];
-  for(int i = 1; i < bufSize;i++){
+  unsigned char bcc2 = 0x00;
+  for(int i = 0; i < bufSize;i++){
     bcc2 = bcc2 ^ buf[i];
+    if(buf[i] == 0x7E){
+      tbuf[4 + i + bytes_stuffed] = 0x7D;
+      tbuf[4 + i + 1 + bytes_stuffed] = 0x5E;
+      bytes_stuffed++;
+    }
+    else if(buf[i] == 0x7D){
+      tbuf[4 + i + bytes_stuffed] = 0x7D;
+      tbuf[4 + i + 1 + bytes_stuffed] = 0x5D;
+      bytes_stuffed++;
+    }
+    else{
+      tbuf[4 + i + bytes_stuffed] = buf[i];
+    }
   }
-  tbuf[4 + bufSize] = bcc2;
-  tbuf[5 + bufSize] = FLAG;
+  
+  tbuf[4 + bufSize + bytes_stuffed] = bcc2;
+  tbuf[5 + bufSize + bytes_stuffed] = FLAG;
 
 
   struct sigaction act = {0};
@@ -324,11 +338,11 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     while (alarmCount < info.nRetransmissions && !alarmEnabled) {
 
-      bytes = writeBytesSerialPort(tbuf, bufSize+6);
+      bytes = writeBytesSerialPort(tbuf, bufSize+6+ bytes_stuffed);
       printf("Sending word: ");
       int i = 0;
 
-      while (i < 6+bufSize) {
+      while (i < 6+bufSize+ bytes_stuffed) {
         printf("0x%02X ", tbuf[i]);
         i++;
       }
@@ -570,8 +584,6 @@ int llread(unsigned char *packet)
                 break;
 
             case DATA_C:
-                printf("dc\n");
-                printf("0x%02X\n", byte);
                 if(byte == FLAG) state = Flag_RCV;
 
                 else if(byte == 1){
@@ -596,7 +608,6 @@ int llread(unsigned char *packet)
                 break;
 
             case CTRL_T:
-                printf("ctrlT\n");
                 if(byte == FLAG) state = Flag_RCV;
 
                 else if (byte == 0){
@@ -610,7 +621,6 @@ int llread(unsigned char *packet)
                 break;
 
             case CTRL_S:
-                printf("ctrlS\n");
                 printf("%02X ", byte);
                 if(byte == FLAG) state = Flag_RCV;
 
@@ -623,8 +633,6 @@ int llread(unsigned char *packet)
                 break;
 
             case CTRL_V:
-                printf("ctrlV\n");
-                printf("%02X ", byte);
                 if(byte == FLAG) state = Flag_RCV;
 
                 else if(V_count > 1){
@@ -641,13 +649,11 @@ int llread(unsigned char *packet)
                 break;
 
             case BCC2:
-                printf("bcc2\n");
                 bcc2 = byte;
                 state = BCC2_RCV;
                 break;
 
             case BCC2_RCV:
-                printf("bcc2R\n");
                 if(byte == FLAG){ 
                   state = STOP;
                   STOP = TRUE;
@@ -659,7 +665,6 @@ int llread(unsigned char *packet)
                 break;
             
             case DATA_S1:
-                printf("dataS1");
                 if(byte == FLAG){ 
                   state = Start;
                 }
@@ -680,18 +685,23 @@ int llread(unsigned char *packet)
                 }
                 break;
       
+
             case DATA_RCV:
-                printf("data\n");
                 
                 if(byte == FLAG){
                     state = Stop; 
                 } 
                 else {
                   if(dataSize > 1){
-                    packet[packetBytes] = byte;
-                    packetBytes++;
-                    dataSize--;
-                    state = DATA_RCV;
+                    if(byte == 0x7D){
+                      state = DATA_STUFF;
+                    }
+                    else{
+                      packet[packetBytes] = byte;
+                      packetBytes++;
+                      dataSize--;
+                      state = DATA_RCV;
+                    }
                   }
                   else{
                     packet[packetBytes] = byte;
@@ -703,8 +713,28 @@ int llread(unsigned char *packet)
                 }
                 break;
             
+            case DATA_STUFF:
+                if(byte == FLAG){
+                  state = STOP;
+                }
+                else if(byte == 0x5E){
+                  packet[packetBytes] = 0x7E;
+                  packetBytes++;
+                  dataSize--;
+                  state = DATA_RCV;
+                }
+                else if(byte == 0x5D){
+                  packet[packetBytes] = 0x7D;
+                  packetBytes++;
+                  dataSize--;
+                  state = DATA_RCV;
+                }
+                if(dataSize == 0){
+                  state = BCC2;
+                }
+                break;
+            
             case Stop:
-                printf("stop\n");
                 STOP = TRUE;
                 break;
             
@@ -717,12 +747,11 @@ int llread(unsigned char *packet)
         
     unsigned char test = 0x00;
 
-    printf("Received packet: ");
     for (int i = 0; i < packetBytes; i++) {
-        printf("%02X ", packet[i]);
         test = test ^ packet[i];
     }
     if(bcc2 == test){
+      printf("test\n");
       unsigned char buf[5] = {0}; 
                         buf[0] = FLAG;
                         buf[1] = add1;
@@ -730,12 +759,11 @@ int llread(unsigned char *packet)
                         buf[3] = add1 ^ buf[2];
                         buf[4] = FLAG;
       int i = 0;
-      printf("Sending:");
+      printf("Sending: \n");
       while (i < 5) {
         printf(" 0x%02X ", buf[i]);
         i++;
       }
-      printf("\n");
 
       writeBytesSerialPort(buf,5);
     }
@@ -747,7 +775,7 @@ int llread(unsigned char *packet)
                         buf[3] = add1 ^ buf[2];
                         buf[4] = FLAG;
 
-      writeBytesSerialPort(buf,5);
+      writeBytesSerialPort(buf,5); 
     }
     printf("\n");
 

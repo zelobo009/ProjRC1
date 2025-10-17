@@ -58,16 +58,27 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
   }
 
   if(connectionParameters.role == 1){
-    unsigned char* cpacket[600] = {0};
+
+    FILE* file = fopen(filename, "w");
+
+    unsigned char cpacket[600] = {0};
     llread(cpacket);
-    while(1){
-      unsigned char* packet[600] = {0};
-      llread(packet);
+    int STOP = 1;
+    while(STOP){
+      unsigned char packet[600] = {0};
+      int packetBytes = llread(packet);
+      printf("Received packet: ");
+      int pSize = packet[1]*256 + packet[2]; 
+      printf("psize = %d", pSize);
+      for(int i = 0; i < packetBytes; i++){
+          printf("0x%02X ", packet[i]);
+      }
       if(packet[0] == 3){
+        STOP = 0;
         break;
       }
+      fwrite(&packet[3], sizeof(unsigned char),pSize, file);
     }
-    llread(cpacket);
   }
   llclose();
   return;
