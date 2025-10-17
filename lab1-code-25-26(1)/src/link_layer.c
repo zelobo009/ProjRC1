@@ -462,6 +462,7 @@ int llread(unsigned char *packet)
     int index = 0;
     int packetBytes = 0;
     int V_count = 0;
+    int dataSize = 0;
     unsigned char bcc2 = 0x00;
     STOP = FALSE;
 
@@ -521,7 +522,7 @@ int llread(unsigned char *packet)
                 printf("bccD\n");
                 if(byte == FLAG) state = Flag_RCV;
 
-                else if(byte = add1 ^ CurrentPacket ^ 0x80){
+                else if(byte = add1 ^ CurrentPacket){
                   state = DATA_C;
                 }
                 else{
@@ -570,6 +571,7 @@ int llread(unsigned char *packet)
 
             case DATA_C:
                 printf("dc\n");
+                printf("0x%02X\n", byte);
                 if(byte == FLAG) state = Flag_RCV;
 
                 else if(byte == 1){
@@ -579,6 +581,7 @@ int llread(unsigned char *packet)
                 }
                 else if(byte == 2){
                   state = DATA_S1;
+                  V_count = 2;
                   packet[packetBytes] = byte;
                   packetBytes++;
                 }
@@ -654,6 +657,28 @@ int llread(unsigned char *packet)
                   state = Start;
                 }
                 break;
+            
+            case DATA_S1:
+                printf("dataS1");
+                if(byte == FLAG){ 
+                  state = Start;
+                }
+                else if (V_count == 2){
+                  dataSize += byte << 8 + 1;
+                  state = DATA_S1;
+                  packet[packetBytes] = byte;
+                  packetBytes++;
+                  V_count--;
+                }
+                else if (V_count == 1){
+                  dataSize += byte;
+                  state = DATA_S1;
+                  packet[packetBytes] = byte;
+                  packetBytes++;
+                  V_count--;
+                  state = DATA_RCV;
+                }
+                break;
       
             case DATA_RCV:
                 printf("data\n");
@@ -662,9 +687,19 @@ int llread(unsigned char *packet)
                     state = Stop; 
                 } 
                 else {
+                  if(dataSize > 1){
                     packet[packetBytes] = byte;
                     packetBytes++;
+                    dataSize--;
                     state = DATA_RCV;
+                  }
+                  else{
+                    packet[packetBytes] = byte;
+                    packetBytes++;
+                    dataSize--;
+                    state = BCC2;
+                  }
+
                 }
                 break;
             
