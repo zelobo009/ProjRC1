@@ -27,12 +27,22 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         perror("Error opening file");
         return;
     }
+
+    fseek(file, 0, SEEK_END); 
+
+    int size = ftell(file);
+
+    fseek(file, 0, SEEK_SET);
     
     
     unsigned char cP[50] = {0};
     cP[0] = 1;
     cP[1] = 0;
-    cP[2] = 2;
+    cP[2] = size >> 8 & 0xFF;
+    // for(int i = 1; i <= cP[2]; i++){
+    // cP[2 +i] = size & 0xFF;
+    // size = size >>    
+    // }
     cP[3] = 0x2A;
     cP[4] = 0xF8;
 

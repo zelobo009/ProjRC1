@@ -297,6 +297,7 @@ int llwrite(const unsigned char *buf, int bufSize)
   alarmEnabled = FALSE;
   alarmCount = 0;
   int bytes_stuffed = 0;
+  int REJ = TRUE;
   State state = Start;
 
   unsigned char tbuf[500] = {0};
@@ -336,8 +337,8 @@ int llwrite(const unsigned char *buf, int bufSize)
     int bytes = 0;
     printf("Alarm configured\n");
 
-    while (alarmCount < info.nRetransmissions && !alarmEnabled) {
-
+    while (alarmCount < info.nRetransmissions && !alarmEnabled && REJ) {
+      REJ = FALSE;
       bytes = writeBytesSerialPort(tbuf, bufSize+6+ bytes_stuffed);
       printf("Sending word: ");
       int i = 0;
@@ -405,7 +406,19 @@ int llwrite(const unsigned char *buf, int bufSize)
             CurrentPacket = 0x00;
             bufR[2] = byte;
           }
-
+          else if (byte == 0x55){
+            REJ = TRUE;
+            state = C_RCV;
+            CurrentPacket = 0x80;
+            bufR[2] = byte;
+          }
+          else if (byte == 0x54){
+            REJ = TRUE;
+            state = C_RCV;
+            CurrentPacket = 0x00;
+            bufR[2] = byte;
+          }
+        
           else
             state = Start;
 
@@ -789,6 +802,8 @@ int llread(unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose()
 {
+
+      
 
     if (closeSerialPort() < 0)
     {
