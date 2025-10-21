@@ -21,7 +21,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
   int r = llopen(connectionParameters);
 
   if( r != 0){
-    return -1;
+    return;
   }
 
   if (connectionParameters.role == 0){
