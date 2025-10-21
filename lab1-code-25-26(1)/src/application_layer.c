@@ -19,7 +19,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
   connectionParameters.timeout = 3;
   connectionParameters.nRetransmissions = nTries;
   int r = llopen(connectionParameters);
-    if (connectionParameters.role == 0){
+
+  if( r != 0){
+    return -1;
+  }
+
+  if (connectionParameters.role == 0){
 
     FILE* file = fopen(filename, "rb");
 
@@ -30,7 +35,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     fseek(file, 0, SEEK_END); 
 
-    int size = ftell(file);
+    // int size = ftell(file);
 
     fseek(file, 0, SEEK_SET);
     
@@ -49,22 +54,28 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     llwrite(cP,5);
 
-    unsigned char rbuf[500] = {0};
+    unsigned char rbuf[1000] = {0};
 
     int rBytes = 0;
     
-    while((rBytes = fread(rbuf, sizeof(unsigned char), 250, file)) > 0){
-      unsigned char dp[500] = {0};
+    while((rBytes = fread(rbuf, sizeof(unsigned char), 1000, file)) > 0){
+      
+      unsigned char dp[1100] = {0};
       dp[0] = 2;
       dp[1] = (rBytes >> 8) & 0xFF;
       dp[2] = rBytes & 0xFF;
+
       memcpy(&dp[3],rbuf, rBytes);
 
       llwrite(dp, rBytes + 3);
     }
     cP[0] = 3;
+
     llwrite(cP,5);
+    
     fclose(file);
+
+    llclose();
   }
 
   if(connectionParameters.role == 1){
@@ -75,21 +86,31 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     llread(cpacket);
     int STOP = 1;
     while(STOP){
-      unsigned char packet[600] = {0};
+
+      unsigned char packet[2000] = {0};
+
       int packetBytes = llread(packet);
-      printf("Received packet: ");
-      int pSize = packet[1]*256 + packet[2]; 
-      printf("psize = %d", pSize);
-      for(int i = 0; i < packetBytes; i++){
-          printf("0x%02X ", packet[i]);
+      
+      if(packetBytes > 0){
+        printf("Received packet: ");
+
+        int pSize = packet[1]*256 + packet[2]; 
+        
+        printf("Packet Size = %d ", pSize);
+
+        for(int i = 0; i < packetBytes; i++){
+            printf("0x%02X ", packet[i]);
+        }
+        if(packet[0] == 3){
+          STOP = 0;
+          break;
+        }
+
+        fwrite(&packet[3], sizeof(unsigned char),pSize, file);
       }
-      if(packet[0] == 3){
-        STOP = 0;
-        break;
-      }
-      fwrite(&packet[3], sizeof(unsigned char),pSize, file);
     }
+      llclose();
+
   }
-  llclose();
   return;
 }

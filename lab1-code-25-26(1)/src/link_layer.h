@@ -31,6 +31,7 @@ typedef enum {Start, Flag_RCV, A_RCV, C_RCV,C_INF_RCV, BCC_RCV, BCC_INF_RCV, BCC
 #define BUF_SIZE 256
 #define FLAG 0x7E
 #define add1 0x03
+#define add2 0x01
 #define SET 0x03
 #define UA 0x07
 #define DISC 0x0B

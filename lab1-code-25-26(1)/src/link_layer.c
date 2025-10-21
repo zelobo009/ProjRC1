@@ -74,15 +74,13 @@ int llopen(LinkLayer connectionParameters) {
       }
 
       STOP = FALSE;
-      int lock = 0;
-      int counter = 0;
       unsigned char bufR[BUF_SIZE] = {0};
       while (STOP == FALSE) {
         if (!alarmEnabled) {
           break;
         }
         unsigned char byte;
-        int bytes = readByteSerialPort(&byte);
+        readByteSerialPort(&byte);
 
         switch (state) {
         case Start:
@@ -180,10 +178,8 @@ int llopen(LinkLayer connectionParameters) {
     State state = Start;
 
     while (STOP == FALSE) {
-      // Read one byte from serial port.
-      // NOTE: You must check how many bytes were actually read by reading the
-      // return value. In this example, we assume that the byte is always read,
-      // which may not be true.
+      
+
       unsigned char byte;
       int bytes = readByteSerialPort(&byte);
       nBytesBuf += bytes;
@@ -269,7 +265,7 @@ int llopen(LinkLayer connectionParameters) {
     buf[4] = FLAG;
 
     sleep(1);    
-    int bytes = writeBytesSerialPort(buf, 5);
+    writeBytesSerialPort(buf, 5);
     int i = 0;
     while (i < 5) {
       printf(" 0x%02X ", buf[i]);
@@ -300,7 +296,9 @@ int llwrite(const unsigned char *buf, int bufSize)
   int REJ = TRUE;
   State state = Start;
 
-  unsigned char tbuf[500] = {0};
+  unsigned char tbuf[bufSize*2 + 6];
+  memset(tbuf, 0, bufSize * 2 + 6);
+
   tbuf[0] = FLAG;
   tbuf[1] = add1;
   tbuf[2] = CurrentPacket;
@@ -336,34 +334,32 @@ int llwrite(const unsigned char *buf, int bufSize)
   }
     int bytes = 0;
     printf("Alarm configured\n");
-
-    while (alarmCount < info.nRetransmissions && !alarmEnabled && REJ) {
-      REJ = FALSE;
+    REJ = TRUE;
+    while (alarmCount < info.nRetransmissions && !alarmEnabled || REJ) {
       bytes = writeBytesSerialPort(tbuf, bufSize+6+ bytes_stuffed);
       printf("Sending word: ");
       int i = 0;
-
+      state = Start;
       while (i < 6+bufSize+ bytes_stuffed) {
         printf("0x%02X ", tbuf[i]);
         i++;
-      }
+      } 
       printf("\n");
 
-      sleep(1);
+      sleep(0.1);
       if (alarmEnabled == FALSE) {
         alarm(info.timeout);
         alarmEnabled = TRUE;
       }
 
       STOP = FALSE;
-      int counter = 0;
       unsigned char bufR[BUF_SIZE] = {0};
       while (STOP == FALSE) {
         if (!alarmEnabled) {
           break;
         }
         unsigned char byte;
-        int bytes = readByteSerialPort(&byte);
+        readByteSerialPort(&byte);
 
         switch (state) {
         case Start:
@@ -395,15 +391,16 @@ int llwrite(const unsigned char *buf, int bufSize)
           printf("a\n");
           if (byte == FLAG)
             state = Flag_RCV;
-
           else if (byte == 0xAB) {
             state = C_RCV;
             CurrentPacket = 0x80;
+            REJ = FALSE;
             bufR[2] = byte;
           }
           else if (byte == 0xAA){
             state = C_RCV;
             CurrentPacket = 0x00;
+            REJ = FALSE;
             bufR[2] = byte;
           }
           else if (byte == 0x55){
@@ -443,6 +440,7 @@ int llwrite(const unsigned char *buf, int bufSize)
           printf("bcc\n");
           if (byte == FLAG) {
             bufR[4] = FLAG;
+                writeBytesSerialPort(buf,5);
             state = Stop;
             STOP = TRUE;
           }
@@ -467,8 +465,16 @@ int llwrite(const unsigned char *buf, int bufSize)
         for (int i = 0; i < 5; i++) {
           printf("0x%02X ", bufR[i]);
         }
-        break;
+        if(bufR[2] == 0x54 || bufR[2] == 0x55){
+          printf("RESENDING: ");
+          printf("%d \n", alarmEnabled);
+          REJ = TRUE;
+        }
+        else {
+          break;
+        }
       }
+
     }
 
     return bytes;
@@ -490,6 +496,7 @@ int llread(unsigned char *packet)
     int packetBytes = 0;
     int V_count = 0;
     int dataSize = 0;
+    int dup = 0;
     unsigned char bcc2 = 0x00;
     STOP = FALSE;
 
@@ -529,6 +536,11 @@ int llread(unsigned char *packet)
                     state = BCC_DATA;
                 }
 
+                else if(byte == (CurrentPacket ^ 0x80)){
+                    state = BCC_DATA;
+                    dup = 1;
+                }
+
                 else {
                     ctrl = byte;
                     state = C_RCV;
@@ -549,7 +561,7 @@ int llread(unsigned char *packet)
                 printf("bccD\n");
                 if(byte == FLAG) state = Flag_RCV;
 
-                else if(byte = add1 ^ CurrentPacket){
+                else if(byte = (add1 ^ CurrentPacket)){
                   state = DATA_C;
                 }
                 else{
@@ -581,18 +593,6 @@ int llread(unsigned char *packet)
                     } 
 
                     else state = Start;
-                }
-                else if(ctrl == 0xAA){
-                    if(byte == FLAG){
-                        state = Stop;
-                        STOP = TRUE;
-                        
-                    } 
-                    else {
-                        result[index++] = byte;
-                        state = DATA_RCV;
-                    }
-
                 }
                 break;
 
@@ -682,7 +682,7 @@ int llread(unsigned char *packet)
                   state = Start;
                 }
                 else if (V_count == 2){
-                  dataSize += byte << 8 + 1;
+                  dataSize += (byte << 8);
                   state = DATA_S1;
                   packet[packetBytes] = byte;
                   packetBytes++;
@@ -764,7 +764,6 @@ int llread(unsigned char *packet)
         test = test ^ packet[i];
     }
     if(bcc2 == test){
-      printf("test\n");
       unsigned char buf[5] = {0}; 
                         buf[0] = FLAG;
                         buf[1] = add1;
@@ -781,7 +780,7 @@ int llread(unsigned char *packet)
       writeBytesSerialPort(buf,5);
     }
     else {
-      CurrentPacket == 0x80 ^ CurrentPacket;
+      CurrentPacket == (0x80 ^ CurrentPacket);
       unsigned char buf[5] = {0}; 
                         buf[0] = FLAG;
                         buf[1] = add1;
@@ -790,9 +789,14 @@ int llread(unsigned char *packet)
                         buf[4] = FLAG;
 
       writeBytesSerialPort(buf,5); 
+      printf("REJECTED \n");
+      return -1;
     }
     printf("\n");
 
+    if(dup) {
+      return -1;
+    }
 
     return packetBytes;
 }
@@ -803,11 +807,14 @@ int llread(unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose()
 {
+
   State state = Start;
+
   if(info.role == 0){
 
-
-        struct sigaction act = {0};
+    alarmCount = 0;
+    alarmEnabled = FALSE;
+    struct sigaction act = {0};
     act.sa_handler = &alarmHandler;
     if (sigaction(SIGALRM, &act, NULL) == -1) {
       perror("sigaction");
@@ -835,7 +842,7 @@ int llclose()
         i++;
       }
       printf("%d bytes written to serial port\n", bytes);
-      sleep(1);
+      sleep(0.1);
       if (alarmEnabled == FALSE) {
         alarm(info.timeout);
         alarmEnabled = TRUE;
@@ -868,9 +875,9 @@ int llclose()
           if (byte == FLAG)
             state = Flag_RCV;
 
-          else if (byte == add1) {
+          else if (byte == add2) {
             state = A_RCV;
-            bufR[1] = add1;
+            bufR[1] = add2;
           }
 
           else
@@ -883,9 +890,9 @@ int llclose()
           if (byte == FLAG)
             state = Flag_RCV;
 
-          else if (byte == UA) {
+          else if (byte == DISC) {
             state = C_RCV;
-            bufR[2] = FLAG;
+            bufR[2] = DISC;
           }
 
           else
@@ -898,8 +905,8 @@ int llclose()
           if (byte == FLAG)
             state = Flag_RCV;
 
-          else if (byte == (UA ^ add1)) {
-            bufR[3] = UA ^ add1;
+          else if (byte == (bufR[1] ^ bufR[2])) {
+            bufR[3] = bufR[1] ^ bufR[2];
             state = BCC_RCV;
           }
 
@@ -937,25 +944,265 @@ int llclose()
         for (int i = 0; i < 5; i++) {
           printf("0x%02X ", bufR[i]);
         }
-        if(bufR[3] != DISC){
-          printf("Did not receive disconnect \n");
+        if(bufR[2] != DISC){
+          printf("Did not receive disconnect byte\n");
         }
-        break;
+        else{
+          break;
+        }
       }
-      if(bufR[3] != DISC){
-        printf("Did not receive disconnect \n");
-      }
+
     }
 
-  }
+    unsigned char bufS[5] = {0};
+
+    bufS[0] = FLAG;
+    bufS[1] = add2;
+    bufS[2] = UA;
+    bufS[3] = add2 ^ UA;
+    bufS[4] = FLAG;
+    sleep(0.2);
+    int bytes = writeBytesSerialPort(bufS, 5);
+
+      printf("SENDING: ");
+      for (int i = 0; i < 5; i++) {
+        printf("0x%02X ", bufS[i]);
+      }
 
       
-
+ 
     if (closeSerialPort() < 0)
     {
         perror("closeSerialPort");
     }
+    printf("\nClosed the connection\n");
     return 0;
+  }
+  else {
+    int nBytesBuf = 0;
+
+    State state = Start;
+    STOP = FALSE;
+    while (STOP == FALSE) {
+      
+
+      unsigned char byte;
+      int bytes = readByteSerialPort(&byte);
+      nBytesBuf += bytes;
+
+      switch (state) {
+      case Start:
+        printf("start\n");
+        if (byte == FLAG)
+          state = Flag_RCV;
+
+        else
+          state = Start;
+
+        break;
+
+      case Flag_RCV:
+        printf("flag\n");
+        if (byte == FLAG)
+          state = Flag_RCV;
+
+        else if (byte == add1)
+          state = A_RCV;
+
+        else
+          state = Start;
+
+        break;
+
+      case A_RCV:
+        printf("a\n");
+        if (byte == FLAG)
+          state = Flag_RCV;
+
+        else if (byte == DISC)
+          state = C_RCV;
+
+        else
+          state = Start;
+
+        break;
+
+      case C_RCV:
+        printf("c\n");
+        if (byte == FLAG)
+          state = Flag_RCV;
+
+        else if (byte == DISC ^ add1)
+          state = BCC_RCV;
+
+        else
+          state = Start;
+
+        break;
+
+      case BCC_RCV:
+
+        printf("bcc\n");
+        if (byte == FLAG) {
+          state = Stop;
+          STOP = TRUE;
+        }
+
+        else
+          state = Start;
+        break;
+
+      case Stop:
+        printf("stop\n");
+        STOP = TRUE;
+        break;
+      default:
+        break;
+      }
+    }
+    unsigned char buf[BUF_SIZE] = {0};
+
+    buf[0] = FLAG;
+    buf[1] = add2;
+    buf[2] = DISC;
+    buf[3] = add2 ^ DISC;
+    buf[4] = FLAG;
+    
+    state = Start;
+    struct sigaction act = {0};
+    act.sa_handler = &alarmHandler;
+    if (sigaction(SIGALRM, &act, NULL) == -1) {
+      perror("sigaction");
+      return 1;
+    }
+
+    printf("Alarm configured\n");
+
+
+    alarmCount = 0;
+    alarmEnabled = FALSE;
+    while (alarmCount < info.nRetransmissions && !alarmEnabled) {
+      int bytes = writeBytesSerialPort(buf, 5);
+      printf("Sending control word: ");
+      int i = 0;
+
+      while (i < 5) {
+        printf("0x%02X ", buf[i]);
+        i++;
+      }
+      printf("%d bytes written to serial port\n", bytes);
+      if (alarmEnabled == FALSE) {
+        alarm(info.timeout);
+        alarmEnabled = TRUE;
+      }
+
+      STOP = FALSE;
+      int lock = 0;
+      int counter = 0;
+      unsigned char bufR[BUF_SIZE] = {0};
+      while (STOP == FALSE) {
+        if (!alarmEnabled) {
+          break;
+        }
+        unsigned char byte;
+        int bytes = readByteSerialPort(&byte);
+
+        switch (state) {
+        case Start:
+          printf("start\n");
+          bufR[0] = '\0';
+          if (byte == FLAG) {
+            state = Flag_RCV;
+            bufR[0] = FLAG;
+          } else
+            state = Start;
+
+          break;
+
+        case Flag_RCV:
+          if (byte == FLAG)
+            state = Flag_RCV;
+
+          else if (byte == add2) {
+            state = A_RCV;
+            bufR[1] = add2;
+          }
+
+          else
+            state = Start;
+
+          break;
+
+        case A_RCV:
+          printf("a\n");
+          if (byte == FLAG)
+            state = Flag_RCV;
+
+          else if (byte == UA) {
+            state = C_RCV;
+            bufR[2] = FLAG;
+          }
+
+          else
+            state = Start;
+
+          break;
+
+        case C_RCV:
+          printf("c\n");
+          if (byte == FLAG)
+            state = Flag_RCV;
+
+          else if (byte == (UA ^ add2)) {
+            bufR[3] = UA ^ add2;
+            state = BCC_RCV;
+          }
+
+          else
+            state = Start;
+
+          break;
+
+        case BCC_RCV:
+
+          printf("bcc\n");
+          if (byte == FLAG) {
+            bufR[4] = FLAG;
+            state = Stop;
+            STOP = TRUE;
+          }
+
+          else
+            state = Start;
+          break;
+
+        case Stop:
+          printf("stop\n");
+          STOP = TRUE;
+          break;
+        default:
+          break;
+        }
+      }
+      if (alarmEnabled) {
+        printf("Received control word: ");
+        alarmCount = 0;
+        alarm(0);
+
+        for (int i = 0; i < 5; i++) {
+          printf("0x%02X ", bufR[i]);
+        }
+        break;
+      }
+    }
+    if (closeSerialPort() < 0)
+    {
+        perror("closeSerialPort");
+    }
+        printf("\nClosed the connection\n");
+    return 0;
+  }
+
 }
 
 
