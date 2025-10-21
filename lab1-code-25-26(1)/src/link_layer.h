@@ -33,6 +33,7 @@ typedef enum {Start, Flag_RCV, A_RCV, C_RCV,C_INF_RCV, BCC_RCV, BCC_INF_RCV, BCC
 #define add1 0x03
 #define SET 0x03
 #define UA 0x07
+#define DISC 0x0B
 
 // Open a connection using the "port" parameters defined in struct linkLayer.
 // Return 0 on success or -1 on error.

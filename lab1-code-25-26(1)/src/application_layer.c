@@ -38,7 +38,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     unsigned char cP[50] = {0};
     cP[0] = 1;
     cP[1] = 0;
-    cP[2] = size >> 8 & 0xFF;
+    cP[2] = 2;
     // for(int i = 1; i <= cP[2]; i++){
     // cP[2 +i] = size & 0xFF;
     // size = size >>    
