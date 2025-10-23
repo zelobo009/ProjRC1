@@ -288,10 +288,33 @@ void alarmHandler(int signal) {
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
+
+int stuff_packet(unsigned char * stuffed_buf, const unsigned char * packet,int packetSize, unsigned char bcc2){
+
+  int bytes_stuffed = 0;
+
+  for (int i = 0; i < packetSize; i++) {
+    bcc2 = bcc2 ^ packet[i];
+    if (packet[i] == 0x7E) {
+      stuffed_buf[4 + i + bytes_stuffed] = 0x7D;
+      stuffed_buf[4 + i + 1 + bytes_stuffed] = 0x5E;
+      bytes_stuffed++;
+    } else if (packet[i] == 0x7D) {
+      stuffed_buf[4 + i + bytes_stuffed] = 0x7D;
+      stuffed_buf[4 + i + 1 + bytes_stuffed] = 0x5D;
+      bytes_stuffed++;
+    } else {
+      stuffed_buf[4 + i + bytes_stuffed] = packet[i];
+    }
+
+  }
+  return bytes_stuffed;
+
+}
+
 int llwrite(const unsigned char *buf, int bufSize) {
   alarmEnabled = FALSE;
   alarmCount = 0;
-  int bytes_stuffed = 0;
   int REJ = TRUE;
   State state = Start;
 
@@ -304,20 +327,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
   tbuf[3] = add1 ^ CurrentPacket;
 
   unsigned char bcc2 = 0x00;
-  for (int i = 0; i < bufSize; i++) {
-    bcc2 = bcc2 ^ buf[i];
-    if (buf[i] == 0x7E) {
-      tbuf[4 + i + bytes_stuffed] = 0x7D;
-      tbuf[4 + i + 1 + bytes_stuffed] = 0x5E;
-      bytes_stuffed++;
-    } else if (buf[i] == 0x7D) {
-      tbuf[4 + i + bytes_stuffed] = 0x7D;
-      tbuf[4 + i + 1 + bytes_stuffed] = 0x5D;
-      bytes_stuffed++;
-    } else {
-      tbuf[4 + i + bytes_stuffed] = buf[i];
-    }
-  }
+  int bytes_stuffed = stuff_packet(tbuf, buf, bufSize, bcc2);
 
   tbuf[4 + bufSize + bytes_stuffed] = bcc2;
   tbuf[5 + bufSize + bytes_stuffed] = FLAG;
@@ -331,6 +341,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
   int bytes = 0;
   printf("Alarm configured\n");
   REJ = TRUE;
+
   while ((alarmCount < info.nRetransmissions && !alarmEnabled) || REJ) {
     bytes = writeBytesSerialPort(tbuf, bufSize + 6 + bytes_stuffed);
     printf("Sending word: ");
@@ -450,6 +461,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
         break;
       }
     }
+
     if (alarmEnabled) {
       printf("Received control word: ");
       alarmCount = 0;
@@ -482,7 +494,6 @@ int llread(unsigned char *packet) {
   unsigned char ctrl = 0;
   int packetBytes = 0;
   unsigned char bcc1 = 0;
-  int V_count = 0;
   int dataSize = 0;
   int dup = 0;
   unsigned char bcc2 = 0x00;
