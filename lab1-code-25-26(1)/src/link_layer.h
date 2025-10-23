@@ -48,6 +48,8 @@ int llwrite(const unsigned char *buf, int bufSize);
 // Return number of chars read, or -1 on error.
 int llread(unsigned char *packet);
 
+int byte_destuffing(unsigned char *packet, unsigned char *result, int packetBytes, unsigned char bcc2, int dataSize);
+
 // Close previously opened connection and print transmission statistics in the console.
 // Return 0 on success or -1 on error.
 int llclose();

@@ -634,29 +634,12 @@ int llread(unsigned char *packet) {
   }
 
   unsigned char test = 0x00;
-  bcc2 = result[dataSize];
-
-  for(int i = 0; i < dataSize - 1; i++){
-    if(result[i] == 0x7D){
-      if(result[i+1] == 0x5d){
-        packet[i] = 0x7D;
-        i++;
-        packetBytes++;
-      }
-      else if(result[i+i] == 0x5e){
-        packet[i] = 0x7E;
-        i++;
-        packetBytes++;
-      }
-    }
-    else{
-      packet[i] = result[i];
-      packetBytes++;
-    }
-  }
+  packetBytes =  byte_destuffing(packet, result,  packetBytes, &bcc2,  dataSize);
+  
   for (int i = 0; i < packetBytes; i++) {
     test = test ^ packet[i];
   }
+
   if (bcc2 == test) {
     unsigned char buf[5] = {0};
     buf[0] = FLAG;
@@ -693,6 +676,32 @@ int llread(unsigned char *packet) {
 
   return packetBytes;
 }
+
+int byte_destuffing(unsigned char *packet, unsigned char *result, int packetBytes, unsigned char bcc2, int dataSize){
+  
+  bcc2 = result[dataSize];
+
+  for(int i = 0; i < dataSize - 1; i++){
+    if(result[i] == 0x7D){
+      if(result[i+1] == 0x5d){
+        packet[i] = 0x7D;
+        i++;
+        packetBytes++;
+      }
+      else if(result[i+i] == 0x5e){
+        packet[i] = 0x7E;
+        i++;
+        packetBytes++;
+      }
+    }
+    else{
+      packet[i] = result[i];
+      packetBytes++;
+    }
+  }
+  return packetBytes;
+}
+
 
 ////////////////////////////////////////////////
 // LLCLOSE
