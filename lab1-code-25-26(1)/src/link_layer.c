@@ -1137,7 +1137,7 @@ int llclose()
 
           else if (byte == UA) {
             state = C_RCV;
-            bufR[2] = FLAG;
+            bufR[2] = UA;
           }
 
           else
