@@ -16,12 +16,25 @@
 LinkLayer info;
 void alarmHandler(int signal);
 
+int check_Flag(unsigned char *buf, unsigned char add, unsigned char ctrl);
+
+int changeCurrentPacket(unsigned char *CurrentPacket, unsigned char byte);
+
+void receiveFlag(unsigned char *bufR, State *state, unsigned char byte);
+
+int byte_destuffing(unsigned char *packet, unsigned char *result, int packetBytes, unsigned char *bcc2, int dataSize);
+
 volatile int STOP = FALSE;
 int alarmEnabled = FALSE;
 int alarmCount = 0;
 unsigned char CurrentPacket = 0x00;
 
-int llopen(LinkLayer connectionParameters) {
+////////////////////////////////////////////////
+// LLOPEN
+////////////////////////////////////////////////
+
+int llopen(LinkLayer connectionParameters)
+{
 
   info = connectionParameters;
   CurrentPacket = 0x00;
@@ -30,18 +43,21 @@ int llopen(LinkLayer connectionParameters) {
   const char *serialPort = connectionParameters.serialPort;
   State state = Start;
 
-  if (openSerialPort(serialPort, connectionParameters.baudRate) < 0) {
+  if (openSerialPort(serialPort, connectionParameters.baudRate) < 0)
+  {
     perror("openSerialPort");
     return -1;
   }
 
   printf("Serial port %s opened\n", serialPort);
 
-  if (connectionParameters.role == 0) {
+  if (connectionParameters.role == 0)
+  {
 
     struct sigaction act = {0};
     act.sa_handler = &alarmHandler;
-    if (sigaction(SIGALRM, &act, NULL) == -1) {
+    if (sigaction(SIGALRM, &act, NULL) == -1)
+    {
       perror("sigaction");
       return 1;
     }
@@ -58,114 +74,51 @@ int llopen(LinkLayer connectionParameters) {
     buf[4] = FLAG;
 
     while (alarmCount < connectionParameters.nRetransmissions &&
-           !alarmEnabled) {
+           !alarmEnabled)
+    {
       int bytes = writeBytesSerialPort(buf, 5);
       printf("Sending control word: ");
       int i = 0;
 
-      while (i < 5) {
+      while (i < 5)
+      {
         printf("0x%02X ", buf[i]);
         i++;
       }
       printf("%d bytes written to serial port\n", bytes);
       sleep(1);
-      if (alarmEnabled == FALSE) {
+      if (alarmEnabled == FALSE)
+      {
         alarm(connectionParameters.timeout);
         alarmEnabled = TRUE;
       }
 
       STOP = FALSE;
       unsigned char bufR[BUF_SIZE] = {0};
-      while (STOP == FALSE) {
-        if (!alarmEnabled) {
+      while (STOP == FALSE)
+      {
+        if (!alarmEnabled)
+        {
           break;
         }
         unsigned char byte;
         readByteSerialPort(&byte);
 
-        switch (state) {
-        case Start:
-          printf("start\n");
-          bufR[0] = '\0';
-          if (byte == FLAG) {
-            state = Flag_RCV;
-            bufR[0] = FLAG;
-          } else
-            state = Start;
-
-          break;
-
-        case Flag_RCV:
-          if (byte == FLAG)
-            state = Flag_RCV;
-
-          else if (byte == add1) {
-            state = A_RCV;
-            bufR[1] = add1;
-          }
-
-          else
-            state = Start;
-
-          break;
-
-        case A_RCV:
-          printf("a\n");
-          if (byte == FLAG)
-            state = Flag_RCV;
-
-          else if (byte == UA) {
-            state = C_RCV;
-            bufR[2] = UA;
-          }
-
-          else
-            state = Start;
-
-          break;
-
-        case C_RCV:
-          printf("c\n");
-          if (byte == FLAG)
-            state = Flag_RCV;
-
-          else if (byte == (UA ^ add1)) {
-            bufR[3] = UA ^ add1;
-            state = BCC_RCV;
-          }
-
-          else
-            state = Start;
-
-          break;
-
-        case BCC_RCV:
-
-          printf("bcc\n");
-          if (byte == FLAG) {
-            bufR[4] = FLAG;
-            state = Stop;
-            STOP = TRUE;
-          }
-
-          else
-            state = Start;
-          break;
-
-        case Stop:
-          printf("stop\n");
-          STOP = TRUE;
-          break;
-        default:
-          break;
+        receiveFlag(bufR, &state, byte);
+        if (state == Stop)
+        {
+          STOP = check_Flag(bufR, add1, UA);
+          state = Start;
         }
       }
-      if (alarmEnabled) {
+      if (alarmEnabled)
+      {
         printf("Received control word: ");
         alarmCount = 0;
         alarm(0);
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 5; i++)
+        {
           printf("0x%02X ", bufR[i]);
         }
         break;
@@ -173,85 +126,26 @@ int llopen(LinkLayer connectionParameters) {
     }
 
     return 0;
-  } else {
+  }
+  else
+  {
     int nBytesBuf = 0;
 
     State state = Start;
-
-    while (STOP == FALSE) {
+    unsigned char bufR[6] = {0};
+    while (STOP == FALSE)
+    {
 
       unsigned char byte;
       int bytes = readByteSerialPort(&byte);
       nBytesBuf += bytes;
 
-      switch (state) {
-      case Start:
-        printf("start\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
+      receiveFlag(bufR, &state, byte);
 
-        else
-          state = Start;
-
-        break;
-
-      case Flag_RCV:
-        printf("flag\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == add1)
-          state = A_RCV;
-
-        else
-          state = Start;
-
-        break;
-
-      case A_RCV:
-        printf("a\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == SET)
-          state = C_RCV;
-
-        else
-          state = Start;
-
-        break;
-
-      case C_RCV:
-        printf("c\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == 0)
-          state = BCC_RCV;
-
-        else
-          state = Start;
-
-        break;
-
-      case BCC_RCV:
-
-        printf("bcc\n");
-        if (byte == FLAG) {
-          state = Stop;
-          STOP = TRUE;
-        }
-
-        else
-          state = Start;
-        break;
-
-      case Stop:
-        printf("stop\n");
-        STOP = TRUE;
-        break;
-      default:
-        break;
+      if (state == Stop)
+      {
+        STOP = check_Flag(bufR, add1, SET);
+        state = Start;
       }
     }
 
@@ -267,7 +161,8 @@ int llopen(LinkLayer connectionParameters) {
     sleep(1);
     writeBytesSerialPort(buf, 5);
     int i = 0;
-    while (i < 5) {
+    while (i < 5)
+    {
       printf(" 0x%02X ", buf[i]);
       i++;
     }
@@ -279,7 +174,8 @@ int llopen(LinkLayer connectionParameters) {
   }
 }
 
-void alarmHandler(int signal) {
+void alarmHandler(int signal)
+{
   alarmEnabled = FALSE;
   alarmCount++;
   printf("Alarm #%d received\n", alarmCount);
@@ -289,30 +185,8 @@ void alarmHandler(int signal) {
 // LLWRITE
 ////////////////////////////////////////////////
 
-int stuff_packet(unsigned char * stuffed_buf, const unsigned char * packet,int packetSize, unsigned char bcc2){
-
-  int bytes_stuffed = 0;
-
-  for (int i = 0; i < packetSize; i++) {
-    bcc2 = bcc2 ^ packet[i];
-    if (packet[i] == 0x7E) {
-      stuffed_buf[4 + i + bytes_stuffed] = 0x7D;
-      stuffed_buf[4 + i + 1 + bytes_stuffed] = 0x5E;
-      bytes_stuffed++;
-    } else if (packet[i] == 0x7D) {
-      stuffed_buf[4 + i + bytes_stuffed] = 0x7D;
-      stuffed_buf[4 + i + 1 + bytes_stuffed] = 0x5D;
-      bytes_stuffed++;
-    } else {
-      stuffed_buf[4 + i + bytes_stuffed] = packet[i];
-    }
-
-  }
-  return bytes_stuffed;
-
-}
-
-int llwrite(const unsigned char *buf, int bufSize) {
+int llwrite(const unsigned char *buf, int bufSize)
+{
   alarmEnabled = FALSE;
   alarmCount = 0;
   int REJ = TRUE;
@@ -327,14 +201,15 @@ int llwrite(const unsigned char *buf, int bufSize) {
   tbuf[3] = add1 ^ CurrentPacket;
 
   unsigned char bcc2 = 0x00;
-  int bytes_stuffed = stuff_packet(tbuf, buf, bufSize, bcc2);
+  int bytes_stuffed = stuff_packet(tbuf, buf, bufSize, &bcc2);
 
   tbuf[4 + bufSize + bytes_stuffed] = bcc2;
   tbuf[5 + bufSize + bytes_stuffed] = FLAG;
 
   struct sigaction act = {0};
   act.sa_handler = &alarmHandler;
-  if (sigaction(SIGALRM, &act, NULL) == -1) {
+  if (sigaction(SIGALRM, &act, NULL) == -1)
+  {
     perror("sigaction");
     return 1;
   }
@@ -342,139 +217,63 @@ int llwrite(const unsigned char *buf, int bufSize) {
   printf("Alarm configured\n");
   REJ = TRUE;
 
-  while ((alarmCount < info.nRetransmissions && !alarmEnabled) || REJ) {
+  while ((alarmCount < info.nRetransmissions && !alarmEnabled) || REJ)
+  {
     bytes = writeBytesSerialPort(tbuf, bufSize + 6 + bytes_stuffed);
-    printf("Sending word: ");
+    printf("Sending word: Packet Size =  %d ", bufSize);
     int i = 0;
     state = Start;
-    while (i < 6 + bufSize + bytes_stuffed) {
+    while (i < 6 + bufSize + bytes_stuffed)
+    {
       printf("0x%02X ", tbuf[i]);
       i++;
     }
     printf("\n");
 
     sleep(0.1);
-    if (alarmEnabled == FALSE) {
+    if (alarmEnabled == FALSE)
+    {
       alarm(info.timeout);
       alarmEnabled = TRUE;
     }
 
     STOP = FALSE;
     unsigned char bufR[BUF_SIZE] = {0};
-    while (STOP == FALSE) {
-      if (!alarmEnabled) {
+    while (STOP == FALSE)
+    {
+      if (!alarmEnabled)
+      {
         break;
       }
       unsigned char byte;
       readByteSerialPort(&byte);
 
-      switch (state) {
-      case Start:
-        printf("start\n");
-        bufR[0] = '\0';
-        if (byte == FLAG) {
-          state = Flag_RCV;
-          bufR[0] = FLAG;
-        } else
-          state = Start;
-
-        break;
-
-      case Flag_RCV:
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == add1) {
-          state = A_RCV;
-          bufR[1] = add1;
-        }
-
-        else
-          state = Start;
-
-        break;
-
-      case A_RCV:
-        printf("a\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == 0xAB) {
-          state = C_RCV;
-          CurrentPacket = 0x80;
-          REJ = FALSE;
-          bufR[2] = byte;
-        } else if (byte == 0xAA) {
-          state = C_RCV;
-          CurrentPacket = 0x00;
-          REJ = FALSE;
-          bufR[2] = byte;
-        } else if (byte == 0x55) {
-          REJ = TRUE;
-          state = C_RCV;
-          CurrentPacket = 0x80;
-          bufR[2] = byte;
-        } else if (byte == 0x54) {
-          REJ = TRUE;
-          state = C_RCV;
-          CurrentPacket = 0x00;
-          bufR[2] = byte;
-        }
-
-        else
-          state = Start;
-
-        break;
-
-      case C_RCV:
-        printf("c\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == (bufR[1] ^ bufR[2])) {
-          bufR[3] = byte;
-          state = BCC_RCV;
-        } else
-          state = Start;
-
-        break;
-
-      case BCC_RCV:
-
-        printf("bcc\n");
-        if (byte == FLAG) {
-          bufR[4] = FLAG;
-          writeBytesSerialPort(buf, 5);
-          state = Stop;
-          STOP = TRUE;
-        }
-
-        else
-          state = Start;
-        break;
-
-      case Stop:
-        printf("stop\n");
-        STOP = TRUE;
-        break;
-      default:
-        break;
+      receiveFlag(bufR, &state, byte);
+      if (state == Stop && changeCurrentPacket(&CurrentPacket, bufR[2]))
+      {
+        STOP = check_Flag(bufR, add1, bufR[2]);
+        state = Start;
       }
     }
 
-    if (alarmEnabled) {
+    if (alarmEnabled)
+    {
       printf("Received control word: ");
       alarmCount = 0;
       alarm(0);
 
-      for (int i = 0; i < 5; i++) {
+      for (int i = 0; i < 5; i++)
+      {
         printf("0x%02X ", bufR[i]);
       }
-      if (bufR[2] == 0x54 || bufR[2] == 0x55) {
+      if (bufR[2] == 0x54 || bufR[2] == 0x55)
+      {
         printf("RESENDING: ");
         printf("%d \n", alarmEnabled);
         REJ = TRUE;
-      } else {
+      }
+      else
+      {
         break;
       }
     }
@@ -486,12 +285,12 @@ int llwrite(const unsigned char *buf, int bufSize) {
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(unsigned char *packet) {
+int llread(unsigned char *packet)
+{
 
   int nBytesBuf = 0;
 
   State state = Start;
-  unsigned char ctrl = 0;
   int packetBytes = 0;
   unsigned char bcc1 = 0;
   int dataSize = 0;
@@ -500,13 +299,15 @@ int llread(unsigned char *packet) {
   unsigned char result[2006];
   STOP = FALSE;
 
-  while (STOP == FALSE) {
+  while (STOP == FALSE)
+  {
 
     unsigned char byte;
     int bytes = readByteSerialPort(&byte);
     nBytesBuf += bytes;
 
-    switch (state) {
+    switch (state)
+    {
     case Start:
       printf("start\n");
       if (byte == FLAG)
@@ -535,35 +336,24 @@ int llread(unsigned char *packet) {
       if (byte == FLAG)
         state = Flag_RCV;
 
-      else if (byte == CurrentPacket) {
+      else if (byte == CurrentPacket)
+      {
         CurrentPacket = CurrentPacket ^ 0x80;
         bcc1 = (byte ^ add1);
         state = BCC_DATA;
       }
 
-      else if (byte == (CurrentPacket ^ 0x80)) {
+      else if (byte == (CurrentPacket ^ 0x80))
+      {
         state = BCC_DATA;
         bcc1 = (byte ^ add1);
         dup = 1;
       }
 
-      else {
-        ctrl = byte;
-        state = C_RCV;
-      }
-      break;
-
-    case C_RCV:
-      printf("c\n");
-      if (byte == FLAG)
-        state = Flag_RCV;
-
-      else if (byte == (add1 ^ ctrl))
-        state = BCC_RCV;
-
       else
+      {
         state = Start;
-
+      }
       break;
 
     case BCC_DATA:
@@ -571,63 +361,25 @@ int llread(unsigned char *packet) {
       if (byte == FLAG)
         state = Flag_RCV;
 
-      else if (byte == bcc1) {
+      else if (byte == bcc1)
+      {
         state = DATA_RCV;
-      } else {
-        state = Start;
       }
-      break;
-
-    case BCC_RCV:
-
-      printf("bcc\n");
-
-      if (ctrl == SET) {
-
-        if (byte == FLAG) {
-
-          state = Stop;
-          STOP = TRUE;
-
-          unsigned char buf[5] = {0};
-
-          buf[0] = FLAG;
-          buf[1] = add1;
-          buf[2] = UA;
-          buf[3] = add1 ^ UA;
-          buf[4] = FLAG;
-
-          writeBytesSerialPort(buf, 5);
-        }
-
-        else
-          state = Start;
-      }
-      break;
-
-    case BCC2:
-      bcc2 = byte;
-      state = BCC2_RCV;
-      break;
-
-    case BCC2_RCV:
-      if (byte == FLAG) {
-        state = STOP;
-        STOP = TRUE;
-      }
-
-      else {
+      else
+      {
         state = Start;
       }
       break;
 
     case DATA_RCV:
 
-      if (byte == FLAG) {
+      if (byte == FLAG)
+      {
         state = Stop;
         STOP = TRUE;
-      } 
-      else {
+      }
+      else
+      {
         result[dataSize] = byte;
         dataSize++;
         state = DATA_RCV;
@@ -645,33 +397,19 @@ int llread(unsigned char *packet) {
   }
 
   unsigned char test = 0x00;
-  bcc2 = result[dataSize - 1];
-  printf(" 0x%02X\n ", bcc2);
-  int i = 0;
-  int j = 0;
-  while (i < dataSize - 1) {
-    if (result[i] == 0x7D) {
-        if (result[i+1] == 0x5D) {
-            packet[j++] = 0x7D;
-            i += 2;
-        } else if (result[i+1] == 0x5E) {
-            packet[j++] = 0x7E;
-            i += 2;
-        } else {
-            // Unexpected escape sequence
-            packet[j++] = result[i++];
-        }
-    } else {
-        packet[j++] = result[i++];
-    }
-}
-packetBytes = j;
-  
-  for (int i = 0; i < packetBytes; i++) {
+  packetBytes = byte_destuffing(packet, result, packetBytes, &bcc2, dataSize);
+
+  for (int i = 0; i < packetBytes; i++)
+  {
     test = test ^ packet[i];
-    printf(" 0x%02X ", packet[i]);
+    printf("0x%02X ", packet[i]);
+
   }
-  if (bcc2 == test) {
+  printf(" 0x%02X \n ", test);
+    printf(" 0x%02X ", bcc2);
+
+  if (bcc2 == test)
+  {
     unsigned char buf[5] = {0};
     buf[0] = FLAG;
     buf[1] = add1;
@@ -680,13 +418,16 @@ packetBytes = j;
     buf[4] = FLAG;
     int i = 0;
     printf("Sending: \n");
-    while (i < 5) {
+    while (i < 5)
+    {
       printf(" 0x%02X ", buf[i]);
       i++;
     }
 
     writeBytesSerialPort(buf, 5);
-  } else {
+  }
+  else
+  {
     CurrentPacket = (0x80 ^ CurrentPacket);
     unsigned char buf[5] = {0};
     buf[0] = FLAG;
@@ -701,7 +442,8 @@ packetBytes = j;
   }
   printf("\n");
 
-  if (dup) {
+  if (dup)
+  {
     return -1;
   }
 
@@ -711,17 +453,20 @@ packetBytes = j;
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose() {
+int llclose()
+{
 
   State state = Start;
 
-  if (info.role == 0) {
+  if (info.role == 0)
+  {
 
     alarmCount = 0;
     alarmEnabled = FALSE;
     struct sigaction act = {0};
     act.sa_handler = &alarmHandler;
-    if (sigaction(SIGALRM, &act, NULL) == -1) {
+    if (sigaction(SIGALRM, &act, NULL) == -1)
+    {
       perror("sigaction");
       return 1;
     }
@@ -737,119 +482,60 @@ int llclose() {
     buf[3] = add1 ^ DISC;
     buf[4] = FLAG;
 
-    while (alarmCount < info.nRetransmissions && !alarmEnabled) {
+    while (alarmCount < info.nRetransmissions && !alarmEnabled)
+    {
       int bytes = writeBytesSerialPort(buf, 5);
       printf("Sending control word: ");
       int i = 0;
 
-      while (i < 5) {
+      while (i < 5)
+      {
         printf("0x%02X ", buf[i]);
         i++;
       }
       printf("%d bytes written to serial port\n", bytes);
       sleep(1);
-      if (alarmEnabled == FALSE) {
+      if (alarmEnabled == FALSE)
+      {
         alarm(info.timeout);
         alarmEnabled = TRUE;
       }
 
       STOP = FALSE;
       unsigned char bufR[BUF_SIZE] = {0};
-      while (STOP == FALSE) {
-        if (!alarmEnabled) {
+      while (STOP == FALSE)
+      {
+        if (!alarmEnabled)
+        {
           break;
         }
         unsigned char byte;
         readByteSerialPort(&byte);
 
-        switch (state) {
-        case Start:
-          printf("start\n");
-          bufR[0] = '\0';
-          if (byte == FLAG) {
-            state = Flag_RCV;
-            bufR[0] = FLAG;
-          } else
-            state = Start;
+        receiveFlag(bufR, &state, byte);
 
-          break;
-
-        case Flag_RCV:
-          if (byte == FLAG)
-            state = Flag_RCV;
-
-          else if (byte == add2) {
-            state = A_RCV;
-            bufR[1] = add2;
-          }
-
-          else
-            state = Start;
-
-          break;
-
-        case A_RCV:
-          printf("a\n");
-          if (byte == FLAG)
-            state = Flag_RCV;
-
-          else if (byte == DISC) {
-            state = C_RCV;
-            bufR[2] = DISC;
-          }
-
-          else
-            state = Start;
-
-          break;
-
-        case C_RCV:
-          printf("c\n");
-          if (byte == FLAG)
-            state = Flag_RCV;
-
-          else if (byte == (bufR[1] ^ bufR[2])) {
-            bufR[3] = bufR[1] ^ bufR[2];
-            state = BCC_RCV;
-          }
-
-          else
-            state = Start;
-
-          break;
-
-        case BCC_RCV:
-
-          printf("bcc\n");
-          if (byte == FLAG) {
-            bufR[4] = FLAG;
-            state = Stop;
-            STOP = TRUE;
-          }
-
-          else
-            state = Start;
-          break;
-
-        case Stop:
-          printf("stop\n");
-          STOP = TRUE;
-          break;
-        default:
-          break;
+        if (state == Stop)
+        {
+          STOP = check_Flag(bufR, add2, DISC);
+          state = Start;
         }
       }
-      if (alarmEnabled) {
+      if (alarmEnabled)
+      {
         printf("Received control word: ");
         alarmCount = 0;
         alarm(0);
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 5; i++)
+        {
           printf("0x%02X ", bufR[i]);
         }
-        if (bufR[2] != DISC) {
+        if (bufR[2] != DISC)
+        {
           printf("Did not receive disconnect byte\n");
-        } else {
+        }
+        else
+        {
           break;
         }
       }
@@ -862,100 +548,46 @@ int llclose() {
     bufS[2] = UA;
     bufS[3] = add2 ^ UA;
     bufS[4] = FLAG;
-    sleep(0.2);
+    sleep(0.5);
     writeBytesSerialPort(bufS, 5);
 
     printf("SENDING: ");
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++)
+    {
       printf("0x%02X ", bufS[i]);
     }
 
-    if (closeSerialPort() < 0) {
+    if (closeSerialPort() < 0)
+    {
       perror("closeSerialPort");
     }
     printf("\nClosed the connection\n");
     return 0;
-  } else {
+  }
+  else
+  {
     int nBytesBuf = 0;
 
     State state = Start;
     STOP = FALSE;
-    while (STOP == FALSE) {
+    unsigned char bufR[BUF_SIZE] = {0};
+
+    while (STOP == FALSE)
+    {
 
       unsigned char byte;
       int bytes = readByteSerialPort(&byte);
       nBytesBuf += bytes;
 
-      switch (state) {
-      case Start:
-        printf("start\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
+      receiveFlag(bufR, &state, byte);
 
-        else
-          state = Start;
-
-        break;
-
-      case Flag_RCV:
-        printf("flag\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == add1)
-          state = A_RCV;
-
-        else
-          state = Start;
-
-        break;
-
-      case A_RCV:
-        printf("a\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == DISC)
-          state = C_RCV;
-
-        else
-          state = Start;
-
-        break;
-
-      case C_RCV:
-        printf("c\n");
-        if (byte == FLAG)
-          state = Flag_RCV;
-
-        else if (byte == (DISC ^ add1))
-          state = BCC_RCV;
-
-        else
-          state = Start;
-
-        break;
-
-      case BCC_RCV:
-
-        printf("bcc\n");
-        if (byte == FLAG) {
-          state = Stop;
-          STOP = TRUE;
-        }
-
-        else
-          state = Start;
-        break;
-
-      case Stop:
-        printf("stop\n");
-        STOP = TRUE;
-        break;
-      default:
-        break;
+      if (state == Stop)
+      {
+        STOP = check_Flag(bufR, add1, DISC);
+        state = Start;
       }
     }
+
     unsigned char buf[BUF_SIZE] = {0};
 
     buf[0] = FLAG;
@@ -967,7 +599,8 @@ int llclose() {
     state = Start;
     struct sigaction act = {0};
     act.sa_handler = &alarmHandler;
-    if (sigaction(SIGALRM, &act, NULL) == -1) {
+    if (sigaction(SIGALRM, &act, NULL) == -1)
+    {
       perror("sigaction");
       return 1;
     }
@@ -976,122 +609,226 @@ int llclose() {
 
     alarmCount = 0;
     alarmEnabled = FALSE;
-    while (alarmCount < info.nRetransmissions && !alarmEnabled) {
+    while (alarmCount < info.nRetransmissions && !alarmEnabled)
+    {
       int bytes = writeBytesSerialPort(buf, 5);
       printf("Sending control word: ");
       int i = 0;
 
-      while (i < 5) {
+      while (i < 5)
+      {
         printf("0x%02X ", buf[i]);
         i++;
       }
       printf("%d bytes written to serial port\n", bytes);
-      if (alarmEnabled == FALSE) {
+      if (alarmEnabled == FALSE)
+      {
         alarm(info.timeout);
         alarmEnabled = TRUE;
       }
 
       STOP = FALSE;
       unsigned char bufR[BUF_SIZE] = {0};
-      while (STOP == FALSE) {
-        if (!alarmEnabled) {
+      state = Start;
+      while (STOP == FALSE)
+      {
+        if (!alarmEnabled)
+        {
           break;
         }
         unsigned char byte;
         readByteSerialPort(&byte);
 
-        switch (state) {
-        case Start:
-          printf("start\n");
-          bufR[0] = '\0';
-          if (byte == FLAG) {
-            state = Flag_RCV;
-            bufR[0] = FLAG;
-          } else
-            state = Start;
-
-          break;
-
-        case Flag_RCV:
-          if (byte == FLAG)
-            state = Flag_RCV;
-
-          else if (byte == add2) {
-            state = A_RCV;
-            bufR[1] = add2;
-          }
-
-          else
-            state = Start;
-
-          break;
-
-        case A_RCV:
-          printf("a\n");
-          if (byte == FLAG)
-            state = Flag_RCV;
-
-          else if (byte == UA) {
-            state = C_RCV;
-            bufR[2] = UA;
-          }
-
-          else
-            state = Start;
-
-          break;
-
-        case C_RCV:
-          printf("c\n");
-          if (byte == FLAG)
-            state = Flag_RCV;
-
-          else if (byte == (UA ^ add2)) {
-            bufR[3] = UA ^ add2;
-            state = BCC_RCV;
-          }
-
-          else
-            state = Start;
-
-          break;
-
-        case BCC_RCV:
-
-          printf("bcc\n");
-          if (byte == FLAG) {
-            bufR[4] = FLAG;
-            state = Stop;
-            STOP = TRUE;
-          }
-
-          else
-            state = Start;
-          break;
-
-        case Stop:
-          printf("stop\n");
-          STOP = TRUE;
-          break;
-        default:
-          break;
+        receiveFlag(bufR, &state, byte);
+        if (state == Stop)
+        {
+          STOP = check_Flag(bufR, add2, UA);
+          state = Start;
         }
       }
-      if (alarmEnabled) {
+      if (alarmEnabled)
+      {
         printf("Received control word: ");
         alarmCount = 0;
         alarm(0);
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 5; i++)
+        {
           printf("0x%02X ", bufR[i]);
         }
         break;
       }
     }
-    if (closeSerialPort() < 0) {
+    if (closeSerialPort() < 0)
+    {
       perror("closeSerialPort");
     }
     printf("\nClosed the connection\n");
     return 0;
   }
+}
+
+int stuff_packet(unsigned char *stuffed_buf, const unsigned char *packet, int packetSize, unsigned char *bcc2)
+{
+
+  int bytes_stuffed = 0;
+
+  for (int i = 0; i < packetSize; i++)
+  {
+    *bcc2 = *bcc2 ^ packet[i];
+    if (packet[i] == 0x7E)
+    {
+      stuffed_buf[4 + i + bytes_stuffed] = 0x7D;
+      stuffed_buf[4 + i + 1 + bytes_stuffed] = 0x5E;
+      bytes_stuffed++;
+    }
+    else if (packet[i] == 0x7D)
+    {
+      stuffed_buf[4 + i + bytes_stuffed] = 0x7D;
+      stuffed_buf[4 + i + 1 + bytes_stuffed] = 0x5D;
+      bytes_stuffed++;
+    }
+    else
+    {
+      stuffed_buf[4 + i + bytes_stuffed] = packet[i];
+    }
+  }
+  return bytes_stuffed;
+}
+int byte_destuffing(unsigned char *packet, unsigned char *result, int packetBytes, unsigned char *bcc2, int dataSize)
+{
+
+  *bcc2 = result[dataSize - 1];
+  int i = 0;
+  while (i < dataSize - 1)
+  {
+    if (result[i] == 0x7D)
+    {
+      if (result[i + 1] == 0x5d)
+      {
+        packet[packetBytes] = 0x7D;
+        i++;
+        packetBytes++;
+      }
+      else if (result[i + 1] == 0x5e)
+      {
+        packet[packetBytes] = 0x7E;
+        i++;
+        packetBytes++;
+      }
+    }
+    else
+    {
+      packet[packetBytes] = result[i];
+      packetBytes++;
+    }
+    i++;
+  }
+  return packetBytes;
+}
+
+int check_Flag(unsigned char *buf, unsigned char add, unsigned char ctrl)
+{
+  if (buf[1] == add && buf[2] == ctrl)
+  {
+    return 1;
+  }
+  return 0;
+}
+
+int changeCurrentPacket(unsigned char *CurrentPacket, unsigned char byte)
+{
+  if (byte == 0xAB || byte == 0xAA || byte == 0x55 || byte == 0x54)
+  {
+    *CurrentPacket = (byte & 0x01) << 7;
+    return 1;
+  }
+  return 0;
+}
+
+void receiveFlag(unsigned char *bufR, State *state, unsigned char byte)
+{
+
+  switch (*state)
+  {
+  case Start:
+    printf("start\n");
+    bufR[0] = '\0';
+    if (byte == FLAG)
+    {
+      *state = Flag_RCV;
+      bufR[0] = FLAG;
+    }
+    else
+      *state = Start;
+
+    break;
+
+  case Flag_RCV:
+    if (byte == FLAG)
+      *state = Flag_RCV;
+
+    else if (byte == add1 || byte == add2)
+    {
+      *state = A_RCV;
+      bufR[1] = byte;
+    }
+
+    else
+      *state = Start;
+
+    break;
+
+  case A_RCV:
+    printf("a\n");
+    if (byte == FLAG)
+      *state = Flag_RCV;
+
+    else if (byte == UA || byte == SET || byte == DISC || byte == 0xAA || byte == 0xAB || byte == 0x55 || byte == 0x54)
+    {
+      *state = C_RCV;
+      bufR[2] = byte;
+    }
+
+    else
+      *state = Start;
+
+    break;
+
+  case C_RCV:
+    printf("c\n");
+    if (byte == FLAG)
+      *state = Flag_RCV;
+
+    else if (byte == (bufR[2] ^ bufR[1]))
+    {
+      bufR[3] = (bufR[2] ^ bufR[1]);
+      *state = BCC_RCV;
+    }
+
+    else
+      *state = Start;
+
+    break;
+
+  case BCC_RCV:
+
+    printf("bcc\n");
+    if (byte == FLAG)
+    {
+      bufR[4] = FLAG;
+      *state = Stop;
+    }
+
+    else
+      *state = Start;
+    break;
+
+  case Stop:
+    printf("stop\n");
+    break;
+  default:
+    break;
+  }
+  return;
 }
