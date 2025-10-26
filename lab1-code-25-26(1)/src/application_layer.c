@@ -35,24 +35,18 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     fseek(file, 0, SEEK_END); 
 
-    // int size = ftell(file);
+    size_t size = ftell(file);
 
     fseek(file, 0, SEEK_SET);
-    
+
+    printf("0x%lX", size);
     
     unsigned char cP[50] = {0};
-    cP[0] = 1;
-    cP[1] = 0;
-    cP[2] = 2;
-    // for(int i = 1; i <= cP[2]; i++){
-    // cP[2 +i] = size & 0xFF;
-    // size = size >>    
-    // }
-    cP[3] = 0x2A;
-    cP[4] = 0xF8;
+
+    int c_size = buildCtrlPacket(cP, filename, size);
 
 
-    llwrite(cP,5);
+    llwrite(cP, c_size);
 
     unsigned char rbuf[1000] = {0};
 
@@ -90,7 +84,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
       unsigned char packet[2000] = {0};
 
       int packetBytes = llread(packet);
-      
       if(packetBytes > 0){
         printf("Received packet: ");
 
@@ -113,4 +106,45 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
   }
   return;
+}
+
+
+
+
+int buildCtrlPacket(unsigned char *cbuf, const char * filename, size_t filesize){
+
+    int size_bytes = 0;
+    int index = 0;
+    size_t test = filesize;
+    while (test > 0){
+      size_bytes++;
+      test = test >> 8;
+    }
+
+    cbuf[index++] = 1;
+    cbuf[index++] = 0;
+    cbuf[index++] = size_bytes;
+    for(int i = 1; i <= size_bytes; i++){
+      cbuf[index++] = (filesize >> (8 * (size_bytes - i))) & 0xFF;
+    }
+
+
+
+
+    cbuf[index++] = 1;
+    int name_bytes = index;
+    cbuf[index++] = 0;
+    int i = 0;
+    while (filename[i] != '\0'){
+      cbuf[name_bytes] += 1;
+      cbuf[index++] = filename[i];
+      i++;
+    }
+
+    return index+1;
+}
+
+
+int readCtrlPacket(unsigned char * cbuf, const char * filename, size_t filesize){
+  
 }
