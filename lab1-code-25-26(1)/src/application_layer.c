@@ -82,7 +82,14 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     size_t rfilesize = 0;
     int ctrl = readCtrlPacket(cpacket, rfilename, &rfilesize);
     
-    FILE* file = fopen(rfilename, "w");
+    FILE* file = fopen(filename, "w");
+
+    printf("Copying file%s to %s \n",rfilename, filename);
+
+    if (file == NULL) {
+        perror("Error opening file");
+        return;
+    }
 
     int STOP = 1;
     while(STOP){
@@ -171,7 +178,6 @@ int readCtrlPacket(unsigned char * cbuf, char * rfilename, size_t * rfilesize){
   
   
     
-  char rfilename[256] = {0};
   for(int i = 0; i < L2; i++) rfilename[i] = cbuf[index++];
 
   rfilename[L2] = '\0';
