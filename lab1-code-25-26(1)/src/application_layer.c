@@ -74,10 +74,16 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
   if(connectionParameters.role == 1){
 
-    FILE* file = fopen(filename, "w");
 
     unsigned char cpacket[600] = {0};
     llread(cpacket);
+
+    char rfilename[256] = {0};
+    size_t rfilesize = 0;
+    int ctrl = readCtrlPacket(cpacket, rfilename, &rfilesize);
+    
+    FILE* file = fopen(rfilename, "w");
+
     int STOP = 1;
     while(STOP){
 
@@ -145,6 +151,31 @@ int buildCtrlPacket(unsigned char *cbuf, const char * filename, size_t filesize)
 }
 
 
-int readCtrlPacket(unsigned char * cbuf, const char * filename, size_t filesize){
+int readCtrlPacket(unsigned char * cbuf, char * rfilename, size_t * rfilesize){
+  int index = 1;
+
+  unsigned int control = cbuf[0];
+
+  unsigned int T1 = cbuf[index++]; 
+  unsigned int L1 = cbuf[index++];
+
   
+  size_t size = 0;
+    
+  for(int i = 0; i < L1; i++) size = (size << 8) | cbuf[index++];
+  
+  *rfilesize = size;
+
+  unsigned int T2 = cbuf[index++];
+  unsigned int L2 = cbuf[index++];
+  
+  
+    
+  char rfilename[256] = {0};
+  for(int i = 0; i < L2; i++) rfilename[i] = cbuf[index++];
+
+  rfilename[L2] = '\0';
+
+  return control;
+
 }
