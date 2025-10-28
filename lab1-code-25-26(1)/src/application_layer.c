@@ -84,7 +84,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     
     FILE* file = fopen(filename, "w");
 
-    printf("Copying file%s to %s \n",rfilename, filename);
+    printf("Copying file %s to %s \n",rfilename, filename);
 
     if (file == NULL) {
         perror("Error opening file");
