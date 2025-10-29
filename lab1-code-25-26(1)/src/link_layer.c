@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -27,6 +28,7 @@ int byte_destuffing(unsigned char *packet, unsigned char *result, int packetByte
 volatile int STOP = FALSE;
 int alarmEnabled = FALSE;
 int alarmCount = 0;
+struct timespec start, end;
 unsigned char CurrentPacket = 0x00;
 
 ////////////////////////////////////////////////
@@ -35,7 +37,8 @@ unsigned char CurrentPacket = 0x00;
 
 int llopen(LinkLayer connectionParameters)
 {
-
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  printf("Starting clock\n");
   info = connectionParameters;
   CurrentPacket = 0x00;
   alarmEnabled = FALSE;
@@ -124,6 +127,11 @@ int llopen(LinkLayer connectionParameters)
         break;
       }
     }
+    if (alarmCount >= connectionParameters.nRetransmissions)
+    {
+      printf("Failed to connect: no response from receiver\n");
+      return -1;
+    }
 
     return 0;
   }
@@ -190,7 +198,6 @@ int llwrite(const unsigned char *buf, int bufSize)
   alarmEnabled = FALSE;
   alarmCount = 0;
   int REJ = TRUE;
-  int timeout = FALSE;
   State state = Start;
 
   unsigned char tbuf[bufSize * 2 + 6];
@@ -239,7 +246,6 @@ int llwrite(const unsigned char *buf, int bufSize)
     {
       if (!alarmEnabled)
       {
-        timeout = TRUE;
         break;
       }
       unsigned char byte;
@@ -278,7 +284,7 @@ int llwrite(const unsigned char *buf, int bufSize)
       }
     }
   }
-  if (timeout)
+  if (alarmCount >= info.nRetransmissions)
   {
     return -1;
   }
@@ -436,6 +442,14 @@ int llread(unsigned char *packet)
     buf[3] = add1 ^ buf[2];
     buf[4] = FLAG;
 
+    printf("Sending: \n");
+    int i = 0;
+    while (i < 5)
+    {
+      printf(" 0x%02X ", buf[i]);
+      i++;
+    }
+    printf("\n");
     sleep(0.3);
     writeBytesSerialPort(buf, 5);
     printf("--REJECTED-- \n");
@@ -564,6 +578,9 @@ int llclose()
       perror("closeSerialPort");
     }
     printf("\nClosed the connection\n");
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    printf("Total time: %.6f seconds\n", elapsed);
     return 0;
   }
   else
@@ -668,6 +685,9 @@ int llclose()
       perror("closeSerialPort");
     }
     printf("\nClosed the connection\n");
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    printf("Total time: %.6f seconds\n", elapsed);
     return 0;
   }
 }

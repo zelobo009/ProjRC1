@@ -13,19 +13,24 @@ int buildCtrlPacket(unsigned char *cbuf, const char *filename, size_t filesize);
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
+  FILE *file;
   LinkLayer connectionParameters;
   connectionParameters.baudRate = baudRate;
   strcpy(connectionParameters.serialPort, serialPort);
   if (strcmp("tx", role) == 0)
   {
+    file = fopen(filename, "rb");
     connectionParameters.role = 0;
   }
   else
   {
+    file = fopen(filename, "wb");
     connectionParameters.role = 1;
   }
   connectionParameters.timeout = 3;
   connectionParameters.nRetransmissions = nTries;
+
+
   int r = llopen(connectionParameters);
 
   if (r != 0)
@@ -35,8 +40,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
   if (connectionParameters.role == 0)
   {
-
-    FILE *file = fopen(filename, "rb");
 
     if (file == NULL)
     {
@@ -110,7 +113,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
       return;
     }
 
-    FILE *file = fopen(filename, "w");
 
     printf("Copying file %s to %s \n", rfilename, filename);
 
