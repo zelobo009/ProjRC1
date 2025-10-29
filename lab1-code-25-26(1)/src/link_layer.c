@@ -190,6 +190,7 @@ int llwrite(const unsigned char *buf, int bufSize)
   alarmEnabled = FALSE;
   alarmCount = 0;
   int REJ = TRUE;
+  int timeout = FALSE;
   State state = Start;
 
   unsigned char tbuf[bufSize * 2 + 6];
@@ -219,18 +220,13 @@ int llwrite(const unsigned char *buf, int bufSize)
 
   while ((alarmCount < info.nRetransmissions && !alarmEnabled) || REJ)
   {
+    REJ = FALSE;
     bytes = writeBytesSerialPort(tbuf, bufSize + 6 + bytes_stuffed);
-    printf("Sending word: Packet Size =  %d ", bufSize);
-    int i = 0;
+    printf("Sending Packet, Size =  %d \n", bufSize);
     state = Start;
-    while (i < 6 + bufSize + bytes_stuffed)
-    {
-      printf("0x%02X ", tbuf[i]);
-      i++;
-    }
     printf("\n");
 
-    sleep(0.1);
+    sleep(0.3);
     if (alarmEnabled == FALSE)
     {
       alarm(info.timeout);
@@ -243,6 +239,7 @@ int llwrite(const unsigned char *buf, int bufSize)
     {
       if (!alarmEnabled)
       {
+        timeout = TRUE;
         break;
       }
       unsigned char byte;
@@ -266,11 +263,14 @@ int llwrite(const unsigned char *buf, int bufSize)
       {
         printf("0x%02X ", bufR[i]);
       }
+      printf("\n");
       if (bufR[2] == 0x54 || bufR[2] == 0x55)
       {
-        printf("RESENDING: ");
-        printf("%d \n", alarmEnabled);
+        printf("--RESENDING--\n ");
         REJ = TRUE;
+        alarmCount = 0;
+        alarm(info.timeout);
+        printf("Alarm configured");
       }
       else
       {
@@ -278,7 +278,10 @@ int llwrite(const unsigned char *buf, int bufSize)
       }
     }
   }
-
+  if (timeout)
+  {
+    return -1;
+  }
   return bytes;
 }
 
@@ -295,6 +298,7 @@ int llread(unsigned char *packet)
   unsigned char bcc1 = 0;
   int dataSize = 0;
   int dup = 0;
+  int wrong_bcc1 = 0;
   unsigned char bcc2 = 0x00;
   unsigned char result[2006];
   STOP = FALSE;
@@ -305,11 +309,13 @@ int llread(unsigned char *packet)
     unsigned char byte;
     int bytes = readByteSerialPort(&byte);
     nBytesBuf += bytes;
-
+    if (state == Start && wrong_bcc1)
+    {
+      return -1;
+    }
     switch (state)
     {
     case Start:
-      printf("start\n");
       if (byte == FLAG)
         state = Flag_RCV;
 
@@ -319,7 +325,6 @@ int llread(unsigned char *packet)
       break;
 
     case Flag_RCV:
-      printf("flag\n");
       if (byte == FLAG)
         state = Flag_RCV;
 
@@ -332,7 +337,6 @@ int llread(unsigned char *packet)
       break;
 
     case A_RCV:
-      printf("a\n");
       if (byte == FLAG)
         state = Flag_RCV;
 
@@ -357,7 +361,6 @@ int llread(unsigned char *packet)
       break;
 
     case BCC_DATA:
-      printf("bccD\n");
       if (byte == FLAG)
         state = Flag_RCV;
 
@@ -367,6 +370,7 @@ int llread(unsigned char *packet)
       }
       else
       {
+        wrong_bcc1 = 1;
         state = Start;
       }
       break;
@@ -402,11 +406,7 @@ int llread(unsigned char *packet)
   for (int i = 0; i < packetBytes; i++)
   {
     test = test ^ packet[i];
-    printf("0x%02X ", packet[i]);
-
   }
-  printf(" 0x%02X \n ", test);
-    printf(" 0x%02X ", bcc2);
 
   if (bcc2 == test)
   {
@@ -423,7 +423,7 @@ int llread(unsigned char *packet)
       printf(" 0x%02X ", buf[i]);
       i++;
     }
-
+    sleep(0.3);
     writeBytesSerialPort(buf, 5);
   }
   else
@@ -436,8 +436,9 @@ int llread(unsigned char *packet)
     buf[3] = add1 ^ buf[2];
     buf[4] = FLAG;
 
+    sleep(0.3);
     writeBytesSerialPort(buf, 5);
-    printf("REJECTED \n");
+    printf("--REJECTED-- \n");
     return -1;
   }
   printf("\n");
@@ -460,7 +461,7 @@ int llclose()
 
   if (info.role == 0)
   {
-
+    printf("Starting disconnect\n");
     alarmCount = 0;
     alarmEnabled = FALSE;
     struct sigaction act = {0};
@@ -484,7 +485,7 @@ int llclose()
 
     while (alarmCount < info.nRetransmissions && !alarmEnabled)
     {
-      int bytes = writeBytesSerialPort(buf, 5);
+      writeBytesSerialPort(buf, 5);
       printf("Sending control word: ");
       int i = 0;
 
@@ -493,7 +494,7 @@ int llclose()
         printf("0x%02X ", buf[i]);
         i++;
       }
-      printf("%d bytes written to serial port\n", bytes);
+      printf("\n");
       sleep(1);
       if (alarmEnabled == FALSE)
       {
@@ -530,6 +531,7 @@ int llclose()
         {
           printf("0x%02X ", bufR[i]);
         }
+        printf("\n");
         if (bufR[2] != DISC)
         {
           printf("Did not receive disconnect byte\n");
@@ -590,6 +592,8 @@ int llclose()
 
     unsigned char buf[BUF_SIZE] = {0};
 
+    printf("Received Disconnect\n");
+
     buf[0] = FLAG;
     buf[1] = add2;
     buf[2] = DISC;
@@ -611,7 +615,7 @@ int llclose()
     alarmEnabled = FALSE;
     while (alarmCount < info.nRetransmissions && !alarmEnabled)
     {
-      int bytes = writeBytesSerialPort(buf, 5);
+      writeBytesSerialPort(buf, 5);
       printf("Sending control word: ");
       int i = 0;
 
@@ -620,7 +624,7 @@ int llclose()
         printf("0x%02X ", buf[i]);
         i++;
       }
-      printf("%d bytes written to serial port\n", bytes);
+      printf("\n");
       if (alarmEnabled == FALSE)
       {
         alarm(info.timeout);
@@ -752,7 +756,6 @@ void receiveFlag(unsigned char *bufR, State *state, unsigned char byte)
   switch (*state)
   {
   case Start:
-    printf("start\n");
     bufR[0] = '\0';
     if (byte == FLAG)
     {
@@ -780,7 +783,6 @@ void receiveFlag(unsigned char *bufR, State *state, unsigned char byte)
     break;
 
   case A_RCV:
-    printf("a\n");
     if (byte == FLAG)
       *state = Flag_RCV;
 
@@ -796,7 +798,6 @@ void receiveFlag(unsigned char *bufR, State *state, unsigned char byte)
     break;
 
   case C_RCV:
-    printf("c\n");
     if (byte == FLAG)
       *state = Flag_RCV;
 
@@ -812,8 +813,6 @@ void receiveFlag(unsigned char *bufR, State *state, unsigned char byte)
     break;
 
   case BCC_RCV:
-
-    printf("bcc\n");
     if (byte == FLAG)
     {
       bufR[4] = FLAG;
@@ -825,7 +824,6 @@ void receiveFlag(unsigned char *bufR, State *state, unsigned char byte)
     break;
 
   case Stop:
-    printf("stop\n");
     break;
   default:
     break;
