@@ -207,12 +207,15 @@ int llwrite(const unsigned char *buf, int bufSize)
   tbuf[1] = add1;
   tbuf[2] = CurrentPacket;
   tbuf[3] = add1 ^ CurrentPacket;
+  CurrentPacket = CurrentPacket ^ 0x80;
 
   unsigned char bcc2 = 0x00;
   int bytes_stuffed = stuff_packet(tbuf, buf, bufSize, &bcc2);
 
   tbuf[4 + bufSize + bytes_stuffed] = bcc2;
   tbuf[5 + bufSize + bytes_stuffed] = FLAG;
+
+  printf("\n");
 
   struct sigaction act = {0};
   act.sa_handler = &alarmHandler;
@@ -229,7 +232,7 @@ int llwrite(const unsigned char *buf, int bufSize)
   {
     REJ = FALSE;
     bytes = writeBytesSerialPort(tbuf, bufSize + 6 + bytes_stuffed);
-    printf("Sending Packet, Size =  %d \n", bufSize);
+    printf("Sending Frame, Size =  %d \n", bufSize + 6 + bytes_stuffed);
     state = Start;
     printf("\n");
 
@@ -262,8 +265,6 @@ int llwrite(const unsigned char *buf, int bufSize)
     if (alarmEnabled)
     {
       printf("Received control word: ");
-      alarmCount = 0;
-      alarm(0);
 
       for (int i = 0; i < 5; i++)
       {
@@ -276,10 +277,13 @@ int llwrite(const unsigned char *buf, int bufSize)
         REJ = TRUE;
         alarmCount = 0;
         alarm(info.timeout);
-        printf("Alarm configured");
+        printf("Alarm reseted\n");
+
       }
       else
       {
+        alarmCount = 0;
+        alarm(0);
         break;
       }
     }
@@ -413,7 +417,6 @@ int llread(unsigned char *packet)
   {
     test = test ^ packet[i];
   }
-
   if (bcc2 == test)
   {
     unsigned char buf[5] = {0};
@@ -423,17 +426,19 @@ int llread(unsigned char *packet)
     buf[3] = add1 ^ buf[2];
     buf[4] = FLAG;
     int i = 0;
-    printf("Sending: \n");
+    printf("\nSending: ");
     while (i < 5)
     {
       printf(" 0x%02X ", buf[i]);
       i++;
     }
+    printf("\n");
     sleep(0.3);
     writeBytesSerialPort(buf, 5);
   }
   else
   {
+    printf("\n--REJECTED-- \n");
     CurrentPacket = (0x80 ^ CurrentPacket);
     unsigned char buf[5] = {0};
     buf[0] = FLAG;
@@ -442,7 +447,7 @@ int llread(unsigned char *packet)
     buf[3] = add1 ^ buf[2];
     buf[4] = FLAG;
 
-    printf("Sending: \n");
+    printf("Sending:");
     int i = 0;
     while (i < 5)
     {
@@ -452,7 +457,6 @@ int llread(unsigned char *packet)
     printf("\n");
     sleep(0.3);
     writeBytesSerialPort(buf, 5);
-    printf("--REJECTED-- \n");
     return -1;
   }
   printf("\n");
@@ -764,7 +768,6 @@ int changeCurrentPacket(unsigned char *CurrentPacket, unsigned char byte)
 {
   if (byte == 0xAB || byte == 0xAA || byte == 0x55 || byte == 0x54)
   {
-    *CurrentPacket = (byte & 0x01) << 7;
     return 1;
   }
   return 0;

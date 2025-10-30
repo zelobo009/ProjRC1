@@ -53,8 +53,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     fseek(file, 0, SEEK_SET);
 
-    printf("0x%lX", size);
-
     unsigned char cP[50] = {0};
 
     int c_size = buildCtrlPacket(cP, filename, size);
@@ -131,11 +129,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
       int packetBytes = llread(packet);
       if (packetBytes > 0)
       {
-        printf("Received packet with ");
+        printf("Received data packet with ");
 
         int pSize = packet[1] * 256 + packet[2];
 
-        printf("Packet Size = %d \n", pSize);
+        printf("data bytes = %d \n", pSize);
 
         if (packet[0] == 3)
         {
