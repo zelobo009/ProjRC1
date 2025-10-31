@@ -79,7 +79,7 @@ int llopen(LinkLayer connectionParameters)
     while (alarmCount < connectionParameters.nRetransmissions &&
            !alarmEnabled)
     {
-      int bytes = writeBytesSerialPort(buf, 5);
+      writeBytesSerialPort(buf, 5);
       printf("--SENDING SET-- \n");
       sleep(0.5);
       if (alarmEnabled == FALSE)
@@ -132,7 +132,7 @@ int llopen(LinkLayer connectionParameters)
     {
 
       unsigned char byte;
-      int bytes = readByteSerialPort(&byte);
+      readByteSerialPort(&byte);
 
       receiveFlag(bufR, &state, byte);
 
@@ -399,7 +399,6 @@ int llread(unsigned char *packet)
     buf[2] = 0xAA + (CurrentPacket == 0x80);
     buf[3] = add1 ^ buf[2];
     buf[4] = FLAG;
-    int i = 0;
     printf("\n--Sending RR%d-- \n", (CurrentPacket == 0x80));
     sleep(0.3);
     writeBytesSerialPort(buf, 5);
@@ -416,7 +415,6 @@ int llread(unsigned char *packet)
     buf[4] = FLAG;
 
     printf("--Sending REJ%d-- \n", (CurrentPacket == 0x80));
-    int i = 0;
     sleep(0.3);
     writeBytesSerialPort(buf, 5);
     return -1;
