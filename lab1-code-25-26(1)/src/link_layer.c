@@ -65,7 +65,7 @@ int llopen(LinkLayer connectionParameters)
       return 1;
     }
 
-    printf("Alarm configured\n");
+    printf("\nAlarm configured\n");
 
     // Create string to send
     unsigned char buf[1024] = {0};
@@ -80,16 +80,8 @@ int llopen(LinkLayer connectionParameters)
            !alarmEnabled)
     {
       int bytes = writeBytesSerialPort(buf, 5);
-      printf("Sending control word: ");
-      int i = 0;
-
-      while (i < 5)
-      {
-        printf("0x%02X ", buf[i]);
-        i++;
-      }
-      printf("%d bytes written to serial port\n", bytes);
-      sleep(1);
+      printf("--SENDING SET-- \n");
+      sleep(0.5);
       if (alarmEnabled == FALSE)
       {
         alarm(connectionParameters.timeout);
@@ -116,14 +108,10 @@ int llopen(LinkLayer connectionParameters)
       }
       if (alarmEnabled)
       {
-        printf("Received control word: ");
         alarmCount = 0;
         alarm(0);
 
-        for (int i = 0; i < 5; i++)
-        {
-          printf("0x%02X ", bufR[i]);
-        }
+        printf("--RECEIVED UA-- \n");
         break;
       }
     }
@@ -137,7 +125,6 @@ int llopen(LinkLayer connectionParameters)
   }
   else
   {
-    int nBytesBuf = 0;
 
     State state = Start;
     unsigned char bufR[6] = {0};
@@ -146,7 +133,6 @@ int llopen(LinkLayer connectionParameters)
 
       unsigned char byte;
       int bytes = readByteSerialPort(&byte);
-      nBytesBuf += bytes;
 
       receiveFlag(bufR, &state, byte);
 
@@ -156,8 +142,8 @@ int llopen(LinkLayer connectionParameters)
         state = Start;
       }
     }
-
-    printf("SENDING NOW");
+    printf("--RECEIVED SET \n");
+    printf("--SENDING UA-- \n");
     unsigned char buf[BUF_SIZE] = {0};
 
     buf[0] = FLAG;
@@ -166,17 +152,10 @@ int llopen(LinkLayer connectionParameters)
     buf[3] = add1 ^ UA;
     buf[4] = FLAG;
 
-    sleep(1);
+    sleep(0.5);
     writeBytesSerialPort(buf, 5);
-    int i = 0;
-    while (i < 5)
-    {
-      printf(" 0x%02X ", buf[i]);
-      i++;
-    }
     printf("\n");
 
-    printf("Total bytes received: %d\n", nBytesBuf);
 
     return 0;
   }
@@ -264,15 +243,9 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     if (alarmEnabled)
     {
-      printf("Received control word: ");
-
-      for (int i = 0; i < 5; i++)
-      {
-        printf("0x%02X ", bufR[i]);
-      }
-      printf("\n");
       if (bufR[2] == 0x54 || bufR[2] == 0x55)
       {
+        printf("--REJ%d RECEIVED--\n", bufR[2] == 0x55);
         printf("--RESENDING--\n ");
         REJ = TRUE;
         alarmCount = 0;
@@ -282,6 +255,7 @@ int llwrite(const unsigned char *buf, int bufSize)
       }
       else
       {
+        printf("--RR%d RECEIVED--\n", bufR[2] == 0xAB);
         alarmCount = 0;
         alarm(0);
         break;
@@ -426,13 +400,7 @@ int llread(unsigned char *packet)
     buf[3] = add1 ^ buf[2];
     buf[4] = FLAG;
     int i = 0;
-    printf("\nSending: ");
-    while (i < 5)
-    {
-      printf(" 0x%02X ", buf[i]);
-      i++;
-    }
-    printf("\n");
+    printf("\n--Sending RR%d-- \n", (CurrentPacket == 0x80));
     sleep(0.3);
     writeBytesSerialPort(buf, 5);
   }
@@ -447,14 +415,8 @@ int llread(unsigned char *packet)
     buf[3] = add1 ^ buf[2];
     buf[4] = FLAG;
 
-    printf("Sending:");
+    printf("--Sending REJ%d-- \n", (CurrentPacket == 0x80));
     int i = 0;
-    while (i < 5)
-    {
-      printf(" 0x%02X ", buf[i]);
-      i++;
-    }
-    printf("\n");
     sleep(0.3);
     writeBytesSerialPort(buf, 5);
     return -1;
@@ -463,6 +425,8 @@ int llread(unsigned char *packet)
 
   if (dup)
   {
+    printf("--DUPLICATE PACKET--\n");
+    printf("--DISCARDING--\n");
     return -1;
   }
 
@@ -479,7 +443,7 @@ int llclose()
 
   if (info.role == 0)
   {
-    printf("Starting disconnect\n");
+    printf("\n Starting disconnect\n");
     alarmCount = 0;
     alarmEnabled = FALSE;
     struct sigaction act = {0};
@@ -490,7 +454,7 @@ int llclose()
       return 1;
     }
 
-    printf("Alarm configured\n");
+    printf("\nAlarm configured\n");
 
     // Create string to send
     unsigned char buf[1024] = {0};
@@ -504,16 +468,8 @@ int llclose()
     while (alarmCount < info.nRetransmissions && !alarmEnabled)
     {
       writeBytesSerialPort(buf, 5);
-      printf("Sending control word: ");
-      int i = 0;
-
-      while (i < 5)
-      {
-        printf("0x%02X ", buf[i]);
-        i++;
-      }
-      printf("\n");
-      sleep(1);
+      printf("--SENDING DISC-- \n");
+      sleep(0.5);
       if (alarmEnabled == FALSE)
       {
         alarm(info.timeout);
@@ -541,14 +497,7 @@ int llclose()
       }
       if (alarmEnabled)
       {
-        printf("Received control word: ");
-        alarmCount = 0;
-        alarm(0);
-
-        for (int i = 0; i < 5; i++)
-        {
-          printf("0x%02X ", bufR[i]);
-        }
+        
         printf("\n");
         if (bufR[2] != DISC)
         {
@@ -556,6 +505,9 @@ int llclose()
         }
         else
         {
+          printf("--RECEIVED DISC-- \n");
+          alarmCount = 0;
+          alarm(0);
           break;
         }
       }
@@ -571,11 +523,7 @@ int llclose()
     sleep(0.5);
     writeBytesSerialPort(bufS, 5);
 
-    printf("SENDING: ");
-    for (int i = 0; i < 5; i++)
-    {
-      printf("0x%02X ", bufS[i]);
-    }
+    printf("\n--SENDING UA-- \n");
 
     if (closeSerialPort() < 0)
     {
@@ -584,7 +532,7 @@ int llclose()
     printf("\nClosed the connection\n");
     clock_gettime(CLOCK_MONOTONIC, &end);
     double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-    printf("Total time: %.6f seconds\n", elapsed);
+    printf("\nTotal time: %.6f seconds\n", elapsed);
     return 0;
   }
   else
@@ -613,7 +561,7 @@ int llclose()
 
     unsigned char buf[BUF_SIZE] = {0};
 
-    printf("Received Disconnect\n");
+    printf("--RECEIVED DISC--\n");
 
     buf[0] = FLAG;
     buf[1] = add2;
@@ -630,21 +578,14 @@ int llclose()
       return 1;
     }
 
-    printf("Alarm configured\n");
+    printf("\nAlarm configured\n");
 
     alarmCount = 0;
     alarmEnabled = FALSE;
     while (alarmCount < info.nRetransmissions && !alarmEnabled)
     {
       writeBytesSerialPort(buf, 5);
-      printf("Sending control word: ");
-      int i = 0;
-
-      while (i < 5)
-      {
-        printf("0x%02X ", buf[i]);
-        i++;
-      }
+      printf("--SENDING DISC-- \n");
       printf("\n");
       if (alarmEnabled == FALSE)
       {
@@ -673,14 +614,9 @@ int llclose()
       }
       if (alarmEnabled)
       {
-        printf("Received control word: ");
+        printf("--RECEIVED UA-- \n");
         alarmCount = 0;
         alarm(0);
-
-        for (int i = 0; i < 5; i++)
-        {
-          printf("0x%02X ", bufR[i]);
-        }
         break;
       }
     }
@@ -691,7 +627,7 @@ int llclose()
     printf("\nClosed the connection\n");
     clock_gettime(CLOCK_MONOTONIC, &end);
     double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-    printf("Total time: %.6f seconds\n", elapsed);
+    printf("\nTotal time: %.6f seconds\n", elapsed);
     return 0;
   }
 }

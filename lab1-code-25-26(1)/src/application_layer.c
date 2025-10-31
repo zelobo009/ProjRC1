@@ -57,14 +57,18 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     int c_size = buildCtrlPacket(cP, filename, size);
 
-    llwrite(cP, c_size);
+    int timeout = 0;
+    if(llwrite(cP, c_size) < 0)
+    {
+        timeout = 1;
+        printf("Timeout.");
+    }
 
     unsigned char rbuf[1000] = {0};
 
     int rBytes = 0;
-    int timeout = 0;
 
-    while ((rBytes = fread(rbuf, sizeof(unsigned char), 1000, file)) > 0)
+    while ((rBytes = fread(rbuf, sizeof(unsigned char), 1000, file)) > 0 && !timeout)
     {
 
       unsigned char dp[1100] = {0};
@@ -129,17 +133,19 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
       int packetBytes = llread(packet);
       if (packetBytes > 0)
       {
+        if (packet[0] == 3)
+        {
+          STOP = 0;
+          printf("Received end control packet\n\n");
+          break;
+        }
         printf("Received data packet with ");
 
         int pSize = packet[1] * 256 + packet[2];
 
-        printf("data bytes = %d \n", pSize);
+        printf("data bytes = %d. Writing to file \n", pSize);
 
-        if (packet[0] == 3)
-        {
-          STOP = 0;
-          break;
-        }
+        
 
         fwrite(&packet[3], sizeof(unsigned char), pSize, file);
       }
