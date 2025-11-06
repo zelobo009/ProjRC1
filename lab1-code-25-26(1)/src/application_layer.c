@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#define MAX_FRAME_SIZE 1000
+
 int readCtrlPacket(unsigned char *cbuf, char *rfilename, size_t *rfilesize);
 
 int buildCtrlPacket(unsigned char *cbuf, const char *filename, size_t filesize);
@@ -64,14 +66,14 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         printf("Timeout.");
     }
 
-    unsigned char rbuf[1000] = {0};
+    unsigned char rbuf[MAX_FRAME_SIZE] = {0};
 
     int rBytes = 0;
 
-    while ((rBytes = fread(rbuf, sizeof(unsigned char), 1000, file)) > 0 && !timeout)
+    while ((rBytes = fread(rbuf, sizeof(unsigned char), MAX_FRAME_SIZE, file)) > 0 && !timeout)
     {
 
-      unsigned char dp[1100] = {0};
+      unsigned char dp[MAX_FRAME_SIZE+100] = {0};
       dp[0] = 2;
       dp[1] = (rBytes >> 8) & 0xFF;
       dp[2] = rBytes & 0xFF;
@@ -128,7 +130,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     while (STOP)
     {
 
-      unsigned char packet[2000] = {0};
+      unsigned char packet[MAX_FRAME_SIZE+100] = {0};
 
       int packetBytes = llread(packet);
       if (packetBytes > 0)
